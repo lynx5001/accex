@@ -92,7 +92,9 @@ This project follows a strict separation between the **Engine** (Rust) and the *
 ## 3. Documentation & Configuration
 - `.gemini/`: AI-specific rules and configurations.
 - `docs/`: Additional architectural and design documentation.
-- `tests/`: End-to-end tests using `tauri-driver`.
+- `tests/ui/`: Frontend integration tests (vitest + jsdom + axe-core) running the real `index.html` against a mocked IPC bridge. Run with `npm test`.
+- Rust unit tests live next to the code (`#[cfg(test)]`); run with `cargo test` in `src-tauri/`.
+- `tests/e2e/` (planned): End-to-end tests using `tauri-driver`.
 
 - **Pure Logic:** Handles file system I/O, SQLite indexing, and path manipulation.
 - **Agnostic:** The engine must not know about Tauri, HTML, or JSON. It returns Rust results and types.
@@ -111,7 +113,22 @@ This project follows a strict separation between the **Engine** (Rust) and the *
 ## Data Flow
 1. User presses `Enter` (Surface).
 2. Surface sends `read_directory` command (Bridge).
-3. Bridge validates path and calls `engine::fs::list` (Engine).
+3. Bridge validates path (`engine::fs::resolve_directory`) and calls `engine::fs::list_directory` (Engine).
 4. Engine returns `Vec<FileEntry>` (Engine).
 5. Bridge serializes to JSON and returns to Surface.
 6. Surface updates ARIA tree and moves focus (Surface).
+
+## IPC Contract (src-tauri/src/lib.rs ↔ src/bridge/)
+
+| Command | Arguments | Returns |
+|---|---|---|
+| `initial_location` | – | home path |
+| `read_directory` | `path`, `showHidden` | `DirectoryListing` (also caches the folder in SQLite and starts watching it) |
+| `fallback_directory` | `path` | nearest existing ancestor (disk unplugged) |
+| `resolve_location` | `input` | `ResolvedLocation` (canonicalized, must exist) |
+| `search_files` | `scope`, `query`, `limit`, `showHidden` | `SearchResults` (scope + 2 levels, plus cached deeper folders) |
+| `execute_operation` | `operation`, `path` | `OperationOutcome` (open, copy, cut, paste, delete → trash, rename, bookmark) |
+| `list_bookmarks` / `remove_bookmark` | – / `path` | `Bookmark[]` / `bool` |
+
+Event: `fs-change` with an `FsChange` payload whenever the watched folder changes.
+Errors are serialized as `{ kind, path, message }`; the UI maps `kind` to the `error.*` i18n keys.
