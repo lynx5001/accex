@@ -1,0 +1,83 @@
+import type { Messages } from "./en";
+
+/** German strings. Missing keys fall back to English. */
+export const de: Partial<Messages> = {
+  "app.title": "Barrierefreier Dateimanager",
+  "location.label": "Aktueller Ort",
+  "location.announce": "Aktueller Ort: {path}",
+  "location.root": "Stammverzeichnis",
+
+  "tree.label": "Inhalt von {name}",
+  "tree.searchLabel": "Suchergebnisse für {query}",
+  "tree.loading": "Wird geladen…",
+  "tree.empty": "Dieser Ordner ist leer",
+  "tree.noResults": "Keine Ergebnisse",
+  "tree.moreResults": "Weitere Ergebnisse anzeigen ({shown} von {total})",
+  "tree.moreResultsUnknown": "Weitere Ergebnisse anzeigen ({shown} angezeigt)",
+
+  "kind.directory": "Ordner",
+  "kind.symlink": "Verknüpfung",
+  "kind.file": "Datei",
+  "kind.fileWithExt": "{ext}-Datei",
+  "meta.modified": "geändert {date}",
+  "meta.in": "in {path}",
+
+  "nav.opened": "{name}, {count} Elemente",
+  "nav.openedEmpty": "{name}, leer",
+  "nav.atRoot": "Bereits auf der obersten Ebene",
+  "nav.fallback": "Ort nicht mehr verfügbar. Gewechselt zu {name}.",
+
+  "search.dialogLabel": "Suche",
+  "search.inputLabel": "Suche in {name}. Eingabe zum Suchen, Escape zum Abbrechen.",
+  "search.placeholder": "Name, Typ oder Pfad…",
+  "search.searching": "Suche läuft…",
+  "search.results": "{count} Ergebnisse",
+  "search.resultsOne": "1 Ergebnis",
+  "search.resultsTruncated": "{shown} von {total} Ergebnissen angezeigt",
+  "search.noResults": "Keine Ergebnisse für {query}",
+  "search.closed": "Suchergebnisse geschlossen",
+
+  "palette.dialogLabel": "Befehle",
+  "palette.inputLabel": "Befehl für {name}. Tippen zum Filtern, Pfeil runter für Vorschläge.",
+  "palette.inputLabelNoTarget": "Befehl. Tippen zum Filtern, Pfeil runter für Vorschläge.",
+  "palette.listLabel": "Befehle",
+  "palette.noMatch": "Kein passender Befehl",
+  "palette.renameLabel": "Neuer Name für {name}. Eingabe zum Umbenennen, Escape zum Abbrechen.",
+  "palette.suggestions": "{count} Vorschläge",
+  "op.open": "Öffnen",
+  "op.copy": "Kopieren",
+  "op.cut": "Ausschneiden",
+  "op.paste": "Einfügen",
+  "op.delete": "Löschen",
+  "op.rename": "Umbenennen",
+  "op.bookmark": "Aktuellen Ort als Lesezeichen speichern",
+
+  "outcome.opened": "{name} geöffnet",
+  "outcome.copied": "{name} kopiert",
+  "outcome.cut": "{name} ausgeschnitten",
+  "outcome.pasted": "{name} eingefügt",
+  "outcome.moved": "{name} verschoben",
+  "outcome.deleted": "{name} in den Papierkorb verschoben",
+  "outcome.renamed": "Umbenannt in {name}",
+  "outcome.bookmarked": "Lesezeichen für {name} gespeichert",
+  "outcome.alreadyBookmarked": "{name} ist bereits ein Lesezeichen",
+
+  "bookmarks.dialogLabel": "Lesezeichen",
+  "bookmarks.listLabel":
+    "Lesezeichen. Eingabe zum Öffnen, Entfernen zum Löschen, Escape zum Schließen.",
+  "bookmarks.empty":
+    "Noch keine Lesezeichen. Über das Befehlsmenü kann der aktuelle Ordner gespeichert werden.",
+  "bookmarks.removed": "Lesezeichen {name} entfernt",
+
+  "error.permissionDenied": "Zugriff verweigert auf {name}.",
+  "error.notFound": "{name} wurde nicht gefunden.",
+  "error.alreadyExists": "{name} existiert bereits.",
+  "error.invalidPath": "Das ist kein gültiger Ort.",
+  "error.invalidName": "Dieser Name ist nicht erlaubt.",
+  "error.notADirectory": "{name} ist kein Ordner.",
+  "error.refused": "Dieser Vorgang ist hier nicht erlaubt.",
+  "error.clipboardEmpty": "Nichts zum Einfügen. Zuerst ein Element kopieren oder ausschneiden.",
+  "error.io": "Der Vorgang ist fehlgeschlagen: {message}",
+  "error.index": "Problem mit dem Suchindex: {message}",
+  "error.unknown": "Etwas ist schiefgelaufen.",
+};

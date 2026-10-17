@@ -1,26 +1,87 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Accessible File Explorer</title>
+    <title data-i18n="app.title">Accessible File Explorer</title>
   </head>
   <body>
-    <div id="app">
-      <header>
-        <p>Current location: <span id="current-path">/</span></p>
-      </header>
+    <!--
+      One persistent layout: the location is always first, the contents always
+      follow. Popups are native modal dialogs layered on top. Every visible
+      string is filled in from src/i18n at startup.
+    -->
+    <header class="location-bar">
+      <nav id="location" aria-labelledby="location-label">
+        <span id="location-label" class="location-label" data-i18n="location.label"
+          >Current location</span
+        >
+        <ol id="breadcrumbs" class="breadcrumbs"></ol>
+      </nav>
+    </header>
 
-      <main>
-        <div id="file-list" role="tree" aria-label="File system navigation">
-          <div role="treeitem" aria-selected="false" aria-level="1" aria-posinset="1" aria-setsize="1">Loading files...</div>
-        </div>
-      </main>
+    <main class="content">
+      <div id="file-list" class="file-list" role="tree" aria-label="Loading…" aria-busy="true">
+        <div class="file-list-rows" role="none"></div>
+      </div>
+    </main>
 
-      <div id="status-announcer" role="status" aria-live="polite" aria-atomic="true"></div>
-      <div id="error-announcer" role="alert" aria-live="assertive" aria-atomic="true"></div>
-    </div>
+    <dialog id="search-dialog" class="popup" aria-labelledby="search-title">
+      <h2 id="search-title" class="popup-title" data-i18n="search.dialogLabel">Search</h2>
+      <input
+        id="search-input"
+        class="popup-input"
+        type="search"
+        role="searchbox"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Search"
+      />
+    </dialog>
+
+    <dialog id="palette-dialog" class="popup" aria-labelledby="palette-title">
+      <h2 id="palette-title" class="popup-title" data-i18n="palette.dialogLabel">Commands</h2>
+      <input
+        id="palette-input"
+        class="popup-input"
+        type="text"
+        role="combobox"
+        autocomplete="off"
+        spellcheck="false"
+        aria-autocomplete="list"
+        aria-expanded="false"
+        aria-controls="palette-list"
+        aria-label="Command"
+      />
+      <ul id="palette-list" class="popup-list" role="listbox" aria-label="Commands" hidden></ul>
+    </dialog>
+
+    <dialog id="bookmarks-dialog" class="popup" aria-labelledby="bookmarks-title">
+      <h2 id="bookmarks-title" class="popup-title" data-i18n="bookmarks.dialogLabel">Bookmarks</h2>
+      <ul
+        id="bookmarks-list"
+        class="popup-list"
+        role="listbox"
+        tabindex="0"
+        aria-label="Bookmarks"
+      ></ul>
+    </dialog>
+
+    <div
+      id="status-announcer"
+      class="visually-hidden"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+    <div
+      id="error-announcer"
+      class="visually-hidden"
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
+    ></div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
