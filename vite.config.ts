@@ -1,17 +1,24 @@
 import { defineConfig } from "vite";
 
-// https://vitejs.dev/config/
-export default defineConfig(async () => ({
-  plugins: [],
+const host = process.env.TAURI_DEV_HOST;
 
-  // Vite options tailored for Tauri development and production.
-  // For more information and options, see https://tauri.app/v1/guides/references/architecture/
+// https://v2.tauri.app/start/frontend/vite/
+export default defineConfig({
+  // Keep Rust errors visible in the terminal.
+  clearScreen: false,
   server: {
     port: 1420,
     strictPort: true,
+    host: host || false,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
   },
-}));
+  envPrefix: ["VITE_", "TAURI_ENV_*"],
+  build: {
+    // Tauri uses Chromium on Windows and WebKit on macOS and Linux.
+    target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari15",
+    minify: !process.env.TAURI_ENV_DEBUG,
+    sourcemap: !!process.env.TAURI_ENV_DEBUG,
+  },
+});
