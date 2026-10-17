@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the main window. All file system access goes through the app's own validated commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

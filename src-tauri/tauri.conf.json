@@ -1,7 +1,8 @@
 {
-  "productName": "accessible-file-explorer",
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Accessible File Explorer",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "org.lynx5001.accessible-explorer",
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
@@ -9,29 +10,34 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": false,
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost",
+      "dangerousDisableAssetCspModification": false,
+      "freezePrototype": true
     },
     "windows": [
       {
-        "fullscreen": false,
-        "height": 600,
+        "label": "main",
+        "title": "Accessible File Explorer",
+        "width": 900,
+        "height": 650,
         "resizable": true,
-        "title": "accessible-file-explorer",
-        "width": 800
+        "fullscreen": false
       }
     ]
   },
   "bundle": {
-      "active": true,
-      "targets": "all",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ]
-    },
-  "plugins": {}
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "shortDescription": "Screen-reader-first file explorer",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
 }
