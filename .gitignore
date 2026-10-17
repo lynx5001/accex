@@ -1,2 +1,4 @@
 target/
-Cargo.lock
+dist/
+src-tauri/gen/schemas/
+node_modules/
