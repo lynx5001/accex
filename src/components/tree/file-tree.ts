@@ -10,7 +10,7 @@
  * Roving tabindex: exactly one row has `tabindex="0"`.
  */
 import type { FileEntry } from "../../bridge/types";
-import { formatDate, formatSize, t } from "../../i18n";
+import { formatDate, formatShortDate, formatSize, t } from "../../i18n";
 
 export type TreeItem =
   | { type: "entry"; entry: FileEntry; /** Shown for search results. */ location?: string }
@@ -231,7 +231,11 @@ export class FileTree {
       if (entry.kind === "directory") row.setAttribute("aria-expanded", "false");
       else row.removeAttribute("aria-expanded");
       row.dataset.kind = entry.kind;
-      this.setRowContent(row, entry.name, describeEntry(entry, item.location), metaId);
+      this.setRowContent(row, entry.name, describeEntry(entry, item.location), metaId, {
+        where: item.location ?? "",
+        size: entry.size !== null ? formatSize(entry.size) : "",
+        modified: entry.modified !== null ? formatShortDate(entry.modified) : "",
+      });
     } else {
       row.setAttribute("aria-label", item.label);
       row.removeAttribute("aria-describedby");
@@ -239,22 +243,48 @@ export class FileTree {
       row.dataset.kind = item.type;
       if (item.type === "placeholder") row.setAttribute("aria-disabled", "true");
       else row.removeAttribute("aria-disabled");
-      this.setRowContent(row, item.label, "", "");
+      this.setRowContent(row, item.label, "", "", { where: "", size: "", modified: "" });
     }
   }
 
-  private setRowContent(row: HTMLElement, name: string, meta: string, metaId: string): void {
+  /**
+   * The spoken description lives in a visually hidden `.row-meta`; the
+   * visible columns repeat it in short form and are hidden from assistive
+   * tech so nothing is read twice.
+   */
+  private setRowContent(
+    row: HTMLElement,
+    name: string,
+    meta: string,
+    metaId: string,
+    columns: { where: string; size: string; modified: string },
+  ): void {
     let nameEl = row.querySelector<HTMLElement>(".row-name");
     let metaEl = row.querySelector<HTMLElement>(".row-meta");
-    if (!nameEl || !metaEl) {
-      nameEl = document.createElement("span");
-      nameEl.className = "row-name";
-      metaEl = document.createElement("span");
-      metaEl.className = "row-meta";
-      row.replaceChildren(nameEl, metaEl);
+    let whereEl = row.querySelector<HTMLElement>(".row-where");
+    let sizeEl = row.querySelector<HTMLElement>(".row-size");
+    let modifiedEl = row.querySelector<HTMLElement>(".row-modified");
+    if (!nameEl || !metaEl || !whereEl || !sizeEl || !modifiedEl) {
+      const span = (className: string) => {
+        const el = document.createElement("span");
+        el.className = className;
+        return el;
+      };
+      nameEl = span("row-name");
+      metaEl = span("row-meta");
+      whereEl = span("row-where");
+      sizeEl = span("row-size");
+      modifiedEl = span("row-modified");
+      const label = span("row-label");
+      label.append(nameEl, whereEl);
+      for (const el of [whereEl, sizeEl, modifiedEl]) el.setAttribute("aria-hidden", "true");
+      row.replaceChildren(label, sizeEl, modifiedEl, metaEl);
     }
     if (nameEl.textContent !== name) nameEl.textContent = name;
     if (metaEl.textContent !== meta) metaEl.textContent = meta;
+    if (whereEl.textContent !== columns.where) whereEl.textContent = columns.where;
+    if (sizeEl.textContent !== columns.size) sizeEl.textContent = columns.size;
+    if (modifiedEl.textContent !== columns.modified) modifiedEl.textContent = columns.modified;
     metaEl.id = metaId;
   }
 
@@ -318,7 +348,8 @@ export class FileTree {
         this.handlers.onEscape();
         break;
       default:
-        if (e.key.length === 1 && e.key !== " ") {
+        // "/" is left to the app: it opens the location box (no name holds one)
+        if (e.key.length === 1 && e.key !== " " && e.key !== "/") {
           this.typeAhead(e.key);
           break;
         }

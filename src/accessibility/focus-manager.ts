@@ -57,12 +57,29 @@ export function closePopup(dialog: HTMLDialogElement, restore = true): void {
   popup.onClose?.();
 }
 
-/** Wires Escape (the dialog's `cancel` event) to `closePopup`. */
+/**
+ * Wires Escape to `closePopup`. The key is caught in the capture phase:
+ * WebKit lets a `type="search"` input swallow Escape (to clear itself), so
+ * the dialog's `cancel` event alone is not enough. `cancel` stays as a
+ * fallback, and `close` keeps the stack right if the dialog closes any
+ * other way.
+ */
 export function registerPopup(dialog: HTMLDialogElement): void {
+  dialog.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closePopup(dialog);
+    },
+    { capture: true },
+  );
   dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
     closePopup(dialog);
   });
+  dialog.addEventListener("close", () => closePopup(dialog));
 }
 
 /** Closes every open popup without restoring focus (teardown). */

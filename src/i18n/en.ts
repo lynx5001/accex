@@ -8,6 +8,14 @@ export const en = {
   "location.announce": "Current location: {path}",
   "location.separator": " / ",
   "location.root": "Root",
+  "location.edit": "Type a location",
+  "location.home": "Home",
+  "location.search": "Search",
+
+  "columns.name": "Name",
+  "columns.size": "Size",
+  "columns.modified": "Modified",
+  "date.today": "Today {time}",
 
   "tree.label": "Contents of {name}",
   "tree.searchLabel": "Search results for {query}",

@@ -75,14 +75,16 @@ export class App {
       onEscape: () => this.exitSearch(),
       onExitTop: () => this.focusBreadcrumb(),
     });
-    this.breadcrumbs = new Breadcrumbs($("breadcrumbs"), {
+    this.breadcrumbs = new Breadcrumbs($("breadcrumbs"), $("location-input"), {
       onNavigate: (path) => void this.navigate(path, { focusPath: this.childTowardsCurrent(path) }),
       onFocusContent: () => this.tree.focusActive(),
+      onSubmitLocation: (input) => this.goToLocation(input),
     });
     this.searchPopup = new SearchPopup($("search-dialog"), $("search-input"));
     this.palette = new CommandPalette($("palette-dialog"), $("palette-input"), $("palette-list"));
     this.bookmarks = new BookmarksPopup($("bookmarks-dialog"), $("bookmarks-list"));
 
+    $("search-button").addEventListener("click", () => this.openSearch());
     document.addEventListener("keydown", this.keyListener);
     this.unlisten = api.onFsChange((change) => {
       if (!this.search && change.directory === this.listing?.path) this.scheduleRefresh();
@@ -98,6 +100,10 @@ export class App {
   }
 
   async start(): Promise<void> {
+    this.breadcrumbs.home = await api
+      .resolveLocation("~")
+      .then((home) => home.path)
+      .catch(() => null);
     await this.navigate(await api.initialLocation());
   }
 
@@ -134,10 +140,11 @@ export class App {
     });
   }
 
+  /** Resolves true when `path` itself was opened. */
   async navigate(
     path: string,
     options: { focusPath?: string; quiet?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     this.rememberFocus();
     this.tree.setBusy(true);
     try {
@@ -151,6 +158,7 @@ export class App {
             : t("nav.openedEmpty", { name: listing.name }),
         );
       }
+      return true;
     } catch (err) {
       this.tree.setBusy(false);
       if (isAppError(err) && err.kind === "notFound" && this.listing?.path !== path) {
@@ -159,6 +167,25 @@ export class App {
         announceError(errorMessage(err));
         if (!this.listing) await this.fallbackFrom(path);
       }
+      return false;
+    }
+  }
+
+  /**
+   * Opens a typed location: a folder, or a file's folder with the file
+   * focused. Relative input is taken from the current folder.
+   */
+  private async goToLocation(input: string): Promise<boolean> {
+    const current = this.listing?.path;
+    const absolute = looksLikePath(input) || !current ? input : `${current}/${input}`;
+    try {
+      const location = await api.resolveLocation(absolute);
+      if (location.isDirectory) return await this.navigate(location.path);
+      const parent = location.path.slice(0, location.path.length - baseName(location.path).length);
+      return await this.navigate(parent, { focusPath: location.path });
+    } catch (err) {
+      announceError(errorMessage(err));
+      return false;
     }
   }
 
@@ -242,20 +269,7 @@ export class App {
 
   private async submitSearch(query: string): Promise<void> {
     if (looksLikePath(query)) {
-      try {
-        const location = await api.resolveLocation(query);
-        if (location.isDirectory) await this.navigate(location.path);
-        else {
-          const parent = location.path.slice(
-            0,
-            location.path.length - baseName(location.path).length,
-          );
-          await this.navigate(parent, { focusPath: location.path });
-        }
-      } catch (err) {
-        announceError(errorMessage(err));
-        this.tree.focusActive();
-      }
+      if (!(await this.goToLocation(query))) this.tree.focusActive();
       return;
     }
     await this.runSearch(query, SEARCH_PAGE);
@@ -443,6 +457,8 @@ export class App {
     if (mod && !e.altKey && key === "f") this.openSearch();
     else if (mod && !e.altKey && key === "b") void this.openBookmarks();
     else if (mod && !e.altKey && key === "l") this.announceLocation();
+    else if (e.key === "/" && !mod && !e.altKey && !(e.target instanceof HTMLInputElement))
+      this.breadcrumbs.edit("/");
     else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) this.openPalette();
     else if ((e.altKey || e.metaKey) && e.key === "ArrowUp" && !this.tree.hasFocus())
       void this.goUp();
@@ -459,6 +475,8 @@ function localizeDocument(): void {
     el.textContent = t(el.dataset.i18n as MessageKey);
   });
   $("file-list").setAttribute("aria-label", t("tree.loading"));
+  $("location-input").setAttribute("aria-label", t("location.edit"));
+  $("search-button").setAttribute("aria-label", t("location.search"));
 }
 
 /** Localizes the static markup, connects live regions and creates the app. */

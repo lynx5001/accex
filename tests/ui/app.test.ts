@@ -74,11 +74,18 @@ function installBackend(): void {
         case "initial_location":
           return "/home/u";
         case "read_directory": {
-          const path = a.path as string;
+          const path = (a.path as string).replace(/(.)\/$/, "$1");
           if (path === "/home/u/Secret") {
             throw { kind: "permissionDenied", path, message: "denied" };
           }
           return listing(path);
+        }
+        case "resolve_location": {
+          const input = (a.input as string).replace(/^~/, "/home/u");
+          if (FS[input]) return { path: input, isDirectory: true };
+          const dir = input.slice(0, input.lastIndexOf("/"));
+          if (FS[dir]?.some((e) => e.path === input)) return { path: input, isDirectory: false };
+          throw { kind: "notFound", path: input, message: "missing" };
         }
         case "search_files":
           return {
@@ -241,6 +248,23 @@ describe("popups", () => {
     expect(focused()).toBe(before);
   });
 
+  it("Escape pressed inside each popup closes it and restores focus", async () => {
+    const before = focused();
+    const popups: [string, KeyboardEventInit, string][] = [
+      ["f", { ctrlKey: true }, "search-dialog"],
+      ["F10", { shiftKey: true }, "palette-dialog"],
+      ["b", { ctrlKey: true }, "bookmarks-dialog"],
+    ];
+    for (const [k, init, id] of popups) {
+      key(before, k, init);
+      const dialog = document.getElementById(id) as HTMLDialogElement;
+      await until(() => dialog.open);
+      key(focused(), "Escape");
+      expect(dialog.open).toBe(false);
+      expect(focused()).toBe(before);
+    }
+  });
+
   it("palette: arrow down on empty input lists all operations", () => {
     key(focused(), "F10", { shiftKey: true });
     const input = document.getElementById("palette-input")!;
@@ -290,5 +314,66 @@ describe("popups", () => {
     expect(list.getAttribute("aria-activedescendant")).toBe("bookmark-0");
     key(list, "Enter");
     await until(() => tree().getAttribute("aria-label") === "Contents of Music");
+  });
+});
+
+describe("location box", () => {
+  const field = () => document.getElementById("breadcrumbs")!;
+  const box = () => document.getElementById("location-input") as HTMLInputElement;
+
+  it("clicking the field opens it with the current path selected", () => {
+    field().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(field().hidden).toBe(true);
+    expect(focused()).toBe(box());
+    expect(box().value).toBe("/home/u");
+    expect(box().getAttribute("aria-label")).toBe("Type a location");
+  });
+
+  it("inside home the path starts at Home, and segments still navigate", async () => {
+    key(focused(), "Enter"); // into Documents
+    await until(() => tree().getAttribute("aria-label") === "Contents of Documents");
+    const crumbs = Array.from(field().querySelectorAll("button"));
+    expect(crumbs.map((b) => b.textContent)).toEqual(["Home", "Documents"]);
+    crumbs[0].click();
+    expect(box().hidden).toBe(true);
+    await until(() => tree().getAttribute("aria-label") === "Contents of u");
+  });
+
+  it("Enter opens the typed folder, relative to the current one", async () => {
+    field().click();
+    box().value = "Music";
+    key(box(), "Enter");
+    await until(() => tree().getAttribute("aria-label") === "Contents of Music");
+    expect(box().hidden).toBe(true);
+    expect(field().hidden).toBe(false);
+  });
+
+  it("a typed file opens its folder with the file focused", async () => {
+    field().click();
+    box().value = "~/Documents/cv.pdf";
+    key(box(), "Enter");
+    await until(() => focused().getAttribute?.("aria-label") === "cv.pdf");
+  });
+
+  it("an unknown path is announced and the box stays open", async () => {
+    field().click();
+    box().value = "/nowhere";
+    key(box(), "Enter");
+    await until(() => alert() === "nowhere was not found.");
+    expect(box().hidden).toBe(false);
+    expect(focused()).toBe(box());
+  });
+
+  it('"/" in the list opens the box with "/" typed', () => {
+    key(focused(), "/");
+    expect(focused()).toBe(box());
+    expect(box().value).toBe("/");
+  });
+
+  it("Escape restores the path and returns to the list", () => {
+    field().click();
+    key(box(), "Escape");
+    expect(box().hidden).toBe(true);
+    expect(tree().contains(focused())).toBe(true);
   });
 });

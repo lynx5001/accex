@@ -6,6 +6,14 @@ export const de: Partial<Messages> = {
   "location.label": "Aktueller Ort",
   "location.announce": "Aktueller Ort: {path}",
   "location.root": "Stammverzeichnis",
+  "location.edit": "Ort eingeben",
+  "location.home": "Persönlicher Ordner",
+  "location.search": "Suchen",
+
+  "columns.name": "Name",
+  "columns.size": "Größe",
+  "columns.modified": "Geändert",
+  "date.today": "Heute {time}",
 
   "tree.label": "Inhalt von {name}",
   "tree.searchLabel": "Suchergebnisse für {query}",

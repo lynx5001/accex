@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title data-i18n="app.title">Accessible File Explorer</title>
   </head>
   <body>
@@ -17,10 +18,31 @@
           >Current location</span
         >
         <ol id="breadcrumbs" class="breadcrumbs"></ol>
+        <input
+          id="location-input"
+          class="location-input"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Type a location"
+          hidden
+        />
       </nav>
+      <button
+        id="search-button"
+        class="icon-button search-button"
+        type="button"
+        aria-label="Search"
+      ></button>
     </header>
 
     <main class="content">
+      <!-- Visual column titles only; each row's description carries the same facts -->
+      <div class="list-header" aria-hidden="true">
+        <span data-i18n="columns.name">Name</span>
+        <span data-i18n="columns.size">Size</span>
+        <span data-i18n="columns.modified">Modified</span>
+      </div>
       <div id="file-list" class="file-list" role="tree" aria-label="Loading…" aria-busy="true">
         <div class="file-list-rows" role="none"></div>
       </div>

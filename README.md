@@ -144,6 +144,7 @@ The location breadcrumb is always the first element. Contents follow. This struc
 | Open context menu | `Apps` key or `Shift + F10` |
 | Open bookmarks | `Ctrl + B` |
 | Announce current location | `Ctrl + L` (Status announcement) |
+| Type a location | `/`, or click the location field (Enter to go, Escape to cancel) |
 | Dismiss any popup | `Escape` |
 | Jump to file | `A-Z` (First-letter navigation) |
 | Move through file list | `Arrow Up / Down` |

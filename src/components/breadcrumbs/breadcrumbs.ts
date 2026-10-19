@@ -2,6 +2,9 @@
  * Location breadcrumb: a single Tab stop (roving tabindex). Left/Right move
  * between segments, Enter/Space navigates. The last segment carries
  * `aria-current="location"`.
+ *
+ * Clicking the field outside a segment swaps it for a text box to type a
+ * path into; Enter goes there, Escape or leaving the box restores it.
  */
 import type { PathSegment } from "../../bridge/types";
 import { t } from "../../i18n";
@@ -10,16 +13,70 @@ export interface BreadcrumbHandlers {
   onNavigate(path: string): void;
   /** Down arrow / activating the current segment returns to the list. */
   onFocusContent(): void;
+  /** A typed location; resolves false when it could not be opened. */
+  onSubmitLocation(input: string): Promise<boolean>;
 }
 
 export class Breadcrumbs {
   private segments: PathSegment[] = [];
+  private homePath: string | null = null;
+  private submitting = false;
 
   constructor(
     private readonly list: HTMLOListElement,
+    private readonly input: HTMLInputElement,
     private readonly handlers: BreadcrumbHandlers,
   ) {
     list.addEventListener("keydown", (e) => this.onKeyDown(e));
+    list.addEventListener("click", (e) => {
+      if (!(e.target as HTMLElement).closest("button")) this.edit();
+    });
+    input.addEventListener("keydown", (e) => this.onInputKeyDown(e));
+    input.addEventListener("blur", () => {
+      if (!this.submitting) this.closeEditor();
+    });
+  }
+
+  get editing(): boolean {
+    return !this.input.hidden;
+  }
+
+  /** Shows the text box, prefilled with `text` or else the current path. */
+  edit(text?: string): void {
+    const current = this.segments[this.segments.length - 1]?.path ?? "";
+    this.input.value = text ?? current;
+    this.list.hidden = true;
+    this.input.hidden = false;
+    this.input.focus();
+    if (text === undefined) this.input.select();
+    else this.input.setSelectionRange(text.length, text.length);
+  }
+
+  private closeEditor(): void {
+    this.input.hidden = true;
+    this.list.hidden = false;
+  }
+
+  private async submit(): Promise<void> {
+    const value = this.input.value.trim();
+    if (!value) return;
+    this.submitting = true;
+    try {
+      if (await this.handlers.onSubmitLocation(value)) this.closeEditor();
+      else this.input.select();
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  private onInputKeyDown(e: KeyboardEvent): void {
+    if (e.key === "Enter") void this.submit();
+    else if (e.key === "Escape") {
+      this.closeEditor();
+      this.handlers.onFocusContent();
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   /** Display name of a segment (`/` is spoken as "Root"). */
@@ -32,7 +89,14 @@ export class Breadcrumbs {
     return segments.map(Breadcrumbs.label).join(t("location.separator"));
   }
 
+  /** Inside this folder the path starts at a single "Home" segment. */
+  set home(path: string | null) {
+    this.homePath = path;
+  }
+
   render(segments: PathSegment[]): void {
+    const homeIndex = segments.findIndex((s) => s.path === this.homePath);
+    if (homeIndex > 0) segments = segments.slice(homeIndex);
     this.segments = segments;
     const items = segments.map((segment, i) => {
       const li = document.createElement("li");
@@ -41,8 +105,13 @@ export class Breadcrumbs {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "breadcrumb";
-      button.textContent = segment.name;
-      button.setAttribute("aria-label", Breadcrumbs.label(segment));
+      if (homeIndex > 0 && i === 0) {
+        button.classList.add("home");
+        button.textContent = t("location.home");
+      } else {
+        button.textContent = segment.name;
+        button.setAttribute("aria-label", Breadcrumbs.label(segment));
+      }
       button.dataset.index = String(i);
       button.tabIndex = i === segments.length - 1 ? 0 : -1;
       if (i === segments.length - 1) button.setAttribute("aria-current", "location");

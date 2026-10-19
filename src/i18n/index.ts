@@ -36,6 +36,17 @@ export function formatDate(ms: number): string {
   return dateFormat.format(new Date(ms));
 }
 
+const dayFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
+const timeFormat = new Intl.DateTimeFormat(locale, { timeStyle: "short" });
+
+/** Column form of a date: the time for today, otherwise the day. */
+export function formatShortDate(ms: number): string {
+  const date = new Date(ms);
+  return date.toDateString() === new Date().toDateString()
+    ? t("date.today", { time: timeFormat.format(date) })
+    : dayFormat.format(date);
+}
+
 export function formatSize(bytes: number): string {
   let value = bytes;
   let unit = 0;
