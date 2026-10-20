@@ -9,6 +9,7 @@ pub mod engine;
 pub mod error;
 pub mod state;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -328,6 +329,18 @@ fn remove_bookmark(state: State<'_, AppState>, path: String) -> AppResult<bool> 
     lock(&state.bookmarks).remove(Path::new(&path))
 }
 
+/// Keyboard shortcut overrides (action id → key combination).
+#[tauri::command]
+fn get_shortcuts(state: State<'_, AppState>) -> BTreeMap<String, String> {
+    lock(&state.bookmarks).shortcuts().clone()
+}
+
+/// Replaces the shortcut overrides; an empty map restores all defaults.
+#[tauri::command]
+fn set_shortcuts(state: State<'_, AppState>, shortcuts: BTreeMap<String, String>) -> AppResult<()> {
+    lock(&state.bookmarks).set_shortcuts(shortcuts)
+}
+
 fn init_logging(app: &AppHandle) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -423,6 +436,8 @@ pub fn run() {
             execute_operation,
             list_bookmarks,
             remove_bookmark,
+            get_shortcuts,
+            set_shortcuts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

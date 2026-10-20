@@ -1,6 +1,8 @@
-//! Persistent app configuration (bookmarks) stored as JSON in the platform's
-//! config directory. SQLite is reserved for the search index.
+//! Persistent app configuration (bookmarks, keyboard shortcuts) stored as
+//! JSON in the platform's config directory. SQLite is reserved for the
+//! search index.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -32,9 +34,13 @@ fn folder() -> bool {
 struct ConfigFile {
     #[serde(default)]
     bookmarks: Vec<Bookmark>,
+    /// Shortcut overrides: action id → key combination (e.g. "Ctrl+Shift+F").
+    /// Actions not listed use the frontend's defaults.
+    #[serde(default)]
+    shortcuts: BTreeMap<String, String>,
 }
 
-/// Bookmarks backed by a JSON file.
+/// Bookmarks and settings backed by a JSON file.
 pub struct BookmarkStore {
     file: PathBuf,
     config: ConfigFile,
@@ -92,6 +98,17 @@ impl BookmarkStore {
             self.save()?;
         }
         Ok(removed)
+    }
+
+    /// The shortcut overrides.
+    pub fn shortcuts(&self) -> &BTreeMap<String, String> {
+        &self.config.shortcuts
+    }
+
+    /// Replaces the shortcut overrides (an empty map restores all defaults).
+    pub fn set_shortcuts(&mut self, shortcuts: BTreeMap<String, String>) -> AppResult<()> {
+        self.config.shortcuts = shortcuts;
+        self.save()
     }
 
     /// Writes atomically (temp file + rename) so a crash never leaves a
@@ -160,6 +177,20 @@ mod tests {
         let file = dir.path().join("config.json");
         fs::write(&file, r#"{"bookmarks":[{"name":"a","path":"/a"}]}"#).unwrap();
         assert!(BookmarkStore::load(&file).list()[0].is_directory);
+    }
+
+    #[test]
+    fn shortcuts_persist_next_to_bookmarks() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("config.json");
+        let mut store = BookmarkStore::load(&file);
+        store.add(Path::new("/a")).unwrap();
+        let shortcuts = BTreeMap::from([("search".to_owned(), "Ctrl+Shift+F".to_owned())]);
+        store.set_shortcuts(shortcuts.clone()).unwrap();
+
+        let reloaded = BookmarkStore::load(&file);
+        assert_eq!(reloaded.shortcuts(), &shortcuts);
+        assert_eq!(reloaded.list().len(), 1);
     }
 
     #[test]

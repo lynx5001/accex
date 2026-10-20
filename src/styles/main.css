@@ -586,6 +586,27 @@ body {
   background: var(--line);
 }
 
+/* Settings: names left, key combinations right */
+.settings-list [role="option"] {
+  justify-content: space-between;
+}
+
+.settings-list .setting-combo {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-list .recording .setting-combo {
+  color: var(--fg);
+  font-style: italic;
+}
+
+.settings-list .reset-all {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+}
+
 /* Search: framed like the bookmarks popup; the search field takes the
    place of the title, the results list below looks like the bookmarks */
 .search-input {

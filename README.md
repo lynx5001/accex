@@ -152,11 +152,14 @@ The location breadcrumb is always the first element. Contents follow. This struc
 | Open search bar | `Ctrl + F` |
 | Open context menu | Right click, `Apps` key or `Shift + F10` |
 | Open command palette | `Ctrl + K` |
+| Open settings (change shortcuts) | `Ctrl + S` |
 | Open bookmarks | `Ctrl + B` |
 | Bookmark focused file or folder | `Ctrl + D`; again to remove it (in the bookmarks list: removes the selected bookmark) |
 | Announce current location | `Ctrl + L` (Status announcement) |
 | Type a location | `/`, or click the location field (Enter to go, Escape to cancel) |
 | Dismiss any popup | `Escape`, or the shortcut that opened it (`Ctrl + F`, `Ctrl + B`, `Ctrl + K`, `Shift + F10`) |
+
+All shortcuts above that open something can be changed in Settings (`Ctrl + S` → Keyboard shortcuts): `Enter` records a new combination (`Escape` cancels), `Delete` resets one, "Reset all shortcuts" at the bottom restores every default. A new combination needs `Ctrl` or `Alt` (function keys and `/` work alone); `Ctrl + A/C/V/X/Y/Z` stay reserved for editing text, and no two actions can share a combination. Changes are saved in the app's `config.json` next to the bookmarks.
 | Jump to file | `A-Z` (First-letter navigation) |
 | Move through file list | `Arrow Up / Down` |
 

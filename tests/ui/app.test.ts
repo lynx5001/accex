@@ -66,10 +66,13 @@ async function mount(): Promise<void> {
 
 /** Paths bookmarked through `execute_operation` in the current test. */
 const bookmarked = new Set<string>();
+/** Shortcut overrides as the backend stores them. */
+let savedShortcuts: Record<string, string> = {};
 
 function installBackend(): void {
   calls = [];
   bookmarked.clear();
+  savedShortcuts = {};
   mockIPC(
     (cmd, args) => {
       const a = (args ?? {}) as Record<string, unknown>;
@@ -119,6 +122,11 @@ function installBackend(): void {
           }
           return { type: "deleted", name: "notes.txt" };
         }
+        case "get_shortcuts":
+          return { ...savedShortcuts };
+        case "set_shortcuts":
+          savedShortcuts = { ...(a.shortcuts as Record<string, string>) };
+          return null;
         case "remove_bookmark":
           return bookmarked.delete(a.path as string);
         case "list_bookmarks":
@@ -333,6 +341,7 @@ describe("popups", () => {
       ["k", { ctrlKey: true }, "palette-dialog"],
       ["F10", { shiftKey: true }, "context-dialog"],
       ["ContextMenu", {}, "context-dialog"],
+      ["s", { ctrlKey: true }, "settings-dialog"],
       ["b", { ctrlKey: true }, "bookmarks-dialog"],
     ];
     for (const [k, init, id] of popups) {
@@ -352,6 +361,7 @@ describe("popups", () => {
       ["k", { ctrlKey: true }, "palette-dialog"],
       ["F10", { shiftKey: true }, "context-dialog"],
       ["ContextMenu", {}, "context-dialog"],
+      ["s", { ctrlKey: true }, "settings-dialog"],
       ["b", { ctrlKey: true }, "bookmarks-dialog"],
     ];
     for (const [k, init, id] of popups) {
@@ -630,5 +640,104 @@ describe("location box", () => {
     key(box(), "Escape");
     expect(box().hidden).toBe(true);
     expect(tree().contains(focused())).toBe(true);
+  });
+});
+
+describe("settings", () => {
+  const dialog = () => document.getElementById("settings-dialog") as HTMLDialogElement;
+  const list = () => document.getElementById("settings-list")!;
+  const options = () => Array.from(list().querySelectorAll<HTMLElement>("[role=option]"));
+  const labels = () => options().map((o) => o.getAttribute("aria-label"));
+  const selected = () => list().getAttribute("aria-activedescendant");
+
+  /** Opens settings and the keyboard shortcuts list. */
+  function openShortcuts(): void {
+    key(focused(), "s", { ctrlKey: true });
+    key(list(), "Enter");
+  }
+
+  it("Ctrl+S lists the settings; Enter shows every shortcut with its keys", () => {
+    key(focused(), "s", { ctrlKey: true });
+    expect(dialog().open).toBe(true);
+    expect(focused()).toBe(list());
+    expect(labels()).toEqual(["Keyboard shortcuts"]);
+
+    key(list(), "Enter");
+    expect(document.getElementById("settings-title")!.textContent).toBe("Keyboard shortcuts");
+    expect(labels()).toEqual([
+      "Open search, Ctrl+F",
+      "Open bookmarks, Ctrl+B",
+      "Add or remove bookmark, Ctrl+D",
+      "Open command palette, Ctrl+K",
+      "Open context menu, Shift+F10",
+      "Open settings, Ctrl+S",
+      "Announce current location, Ctrl+L",
+      "Type a location, /",
+      "Reset all shortcuts",
+    ]);
+    key(list(), "Backspace");
+    expect(labels()).toEqual(["Keyboard shortcuts"]);
+  });
+
+  it("Enter records a new combination, saves it and the old one stops working", async () => {
+    openShortcuts();
+    key(list(), "Enter"); // Open search
+    expect(options()[0].textContent).toContain("Press keys…");
+    await until(
+      () => status() === "Press the new key combination for Open search. Escape cancels.",
+    );
+    key(list(), "Shift", { shiftKey: true, ctrlKey: true }); // lone modifier: keep listening
+    key(list(), "F", { shiftKey: true, ctrlKey: true });
+    await until(() => status() === "Open search: Ctrl+Shift+F");
+    expect(savedShortcuts).toEqual({ search: "Ctrl+Shift+F" });
+    expect(labels()[0]).toBe("Open search, Ctrl+Shift+F");
+
+    key(list(), "Escape");
+    expect(dialog().open).toBe(false);
+    const search = document.getElementById("search-dialog") as HTMLDialogElement;
+    key(focused(), "f", { ctrlKey: true });
+    expect(search.open).toBe(false);
+    key(focused(), "F", { ctrlKey: true, shiftKey: true });
+    expect(search.open).toBe(true);
+  });
+
+  it("a combination used elsewhere or needed for typing is refused; Escape cancels", async () => {
+    openShortcuts();
+    key(list(), "Enter"); // Open search
+    key(list(), "b", { ctrlKey: true });
+    await until(
+      () => alert() === "Ctrl+B is already used for Open bookmarks. Press another combination.",
+    );
+    key(list(), "a");
+    await until(
+      () =>
+        alert() ===
+        "A is needed for moving and typing. Use Ctrl or Alt with it, or a function key.",
+    );
+    key(list(), "c", { ctrlKey: true });
+    await until(() => alert() === "Ctrl+C is kept for editing text. Press another combination.");
+    key(list(), "Escape");
+    await until(() => status() === "Shortcut unchanged");
+    expect(dialog().open).toBe(true); // Escape ended the recording, not the popup
+    expect(labels()[0]).toBe("Open search, Ctrl+F");
+    expect(savedShortcuts).toEqual({});
+  });
+
+  it("Delete resets one shortcut; the last entry resets all", async () => {
+    savedShortcuts = { search: "Ctrl+Shift+F", bookmarks: "Alt+B" };
+    await mount(); // loads the saved shortcuts
+    await until(() => rows().length > 0 && focused() === rows()[0]);
+    openShortcuts();
+    expect(labels()[0]).toBe("Open search, Ctrl+Shift+F");
+    key(list(), "Delete");
+    await until(() => status() === "Open search reset to Ctrl+F");
+    expect(savedShortcuts).toEqual({ bookmarks: "Alt+B" });
+
+    key(list(), "End");
+    expect(selected()).toBe("setting-8");
+    key(list(), "Enter");
+    await until(() => status() === "All shortcuts reset to their defaults");
+    expect(savedShortcuts).toEqual({});
+    expect(labels()[1]).toBe("Open bookmarks, Ctrl+B");
   });
 });

@@ -28,9 +28,20 @@ import { ContextMenu } from "./components/context-menu/context-menu";
 import { CommandPalette } from "./components/palette/command-palette";
 import { SearchPopup } from "./components/search/search-popup";
 import { FileTree, type TreeItem } from "./components/tree/file-tree";
+import { SettingsPopup } from "./components/settings/settings-popup";
 import { formatCount, locale, t, type MessageKey } from "./i18n";
+import { comboFromEvent, isPlainKey, Shortcuts, type ShortcutAction } from "./shortcuts";
 
 const REFRESH_DEBOUNCE_MS = 200;
+
+/** The popup each popup-opening shortcut toggles. */
+const POPUP_OF: Partial<Record<ShortcutAction, string>> = {
+  search: "search-dialog",
+  bookmarks: "bookmarks-dialog",
+  palette: "palette-dialog",
+  contextMenu: "context-dialog",
+  settings: "settings-dialog",
+};
 /** WebKit follows the Menu key / Shift+F10 with a `contextmenu` event; ignore it this long. */
 const MENU_KEY_ECHO_MS = 500;
 
@@ -81,6 +92,8 @@ export class App {
   private readonly searchPopup: SearchPopup;
   private readonly palette: CommandPalette;
   private readonly contextMenu: ContextMenu;
+  private readonly settings: SettingsPopup;
+  private readonly shortcuts = new Shortcuts();
   private readonly bookmarks: BookmarksPopup;
 
   constructor() {
@@ -98,6 +111,11 @@ export class App {
     this.palette = new CommandPalette($("palette-dialog"), $("palette-input"), $("palette-list"));
     this.bookmarks = new BookmarksPopup($("bookmarks-dialog"), $("bookmarks-list"));
     this.contextMenu = new ContextMenu($("context-dialog"), $("context-menu"));
+    this.settings = new SettingsPopup(
+      $("settings-dialog"),
+      $("settings-title"),
+      $("settings-list"),
+    );
     $("file-list").addEventListener("contextmenu", (e) => this.onRightClick(e));
 
     setPopupAnchor($("location"));
@@ -117,6 +135,11 @@ export class App {
   }
 
   async start(): Promise<void> {
+    try {
+      this.shortcuts.load(await api.getShortcuts());
+    } catch (err) {
+      announceError(errorMessage(err));
+    }
     this.breadcrumbs.home = await api
       .resolveLocation("~")
       .then((home) => home.path)
@@ -427,6 +450,23 @@ export class App {
     }
   }
 
+  // -------------------------------------------------------------- settings
+
+  private openSettings(): void {
+    this.settings.open({
+      shortcuts: this.shortcuts,
+      restoreFallback: () => this.tree.focusActive(),
+      onChange: async () => {
+        try {
+          await api.setShortcuts(this.shortcuts.saved);
+        } catch (err) {
+          announceError(errorMessage(err));
+          throw err;
+        }
+      },
+    });
+  }
+
   // ------------------------------------------------------------- bookmarks
 
   private async openBookmarks(): Promise<void> {
@@ -484,44 +524,56 @@ export class App {
   }
 
   private onGlobalKey(e: KeyboardEvent): void {
-    const mod = e.ctrlKey || e.metaKey;
-    const key = e.key.toLowerCase();
-    const menuKey = e.key === "ContextMenu" || (e.shiftKey && e.key === "F10");
-    if (menuKey) this.menuKeyAt = performance.now();
-    const popupKey =
-      mod && !e.altKey && key === "f"
-        ? "search-dialog"
-        : mod && !e.altKey && key === "b"
-          ? "bookmarks-dialog"
-          : mod && !e.altKey && key === "k"
-            ? "palette-dialog"
-            : menuKey
-              ? "context-dialog"
-              : null;
+    // WebKit follows these keys with a `contextmenu` event (see onRightClick).
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      this.menuKeyAt = performance.now();
+    }
+    const combo = comboFromEvent(e);
+    let action = combo ? this.shortcuts.actionFor(combo) : null;
+    // Plain-key shortcuts ("/") must not fire while typing in a text field.
+    if (action && combo && isPlainKey(combo) && e.target instanceof HTMLInputElement) action = null;
+    // The Menu key always opens the context menu, whatever else is bound.
+    if (e.key === "ContextMenu") action = "contextMenu";
+    const dialog = action ? POPUP_OF[action] : undefined;
 
     // While a popup is open, only its own shortcut works: it closes it again.
     if (isPopupOpen()) {
       const top = topPopup();
-      if (top && popupKey === top.id) {
+      if (top && dialog === top.id) {
         e.preventDefault();
         closePopup(top);
       }
       return;
     }
 
-    if (popupKey === "search-dialog") this.openSearch();
-    else if (popupKey === "bookmarks-dialog") void this.openBookmarks();
-    else if (popupKey === "palette-dialog") this.openPalette();
-    else if (popupKey === "context-dialog") this.openContextMenuAtRow();
-    else if (mod && !e.altKey && key === "d") void this.toggleBookmark();
-    else if (mod && !e.altKey && key === "l") this.announceLocation();
-    else if (e.key === "/" && !mod && !e.altKey && !(e.target instanceof HTMLInputElement))
-      this.breadcrumbs.edit("/");
+    if (action) this.run(action, combo);
     else if ((e.altKey || e.metaKey) && e.key === "ArrowUp" && !this.tree.hasFocus())
       void this.goUp();
     else if (e.target === document.body && e.key.startsWith("Arrow")) this.tree.focusActive();
     else return;
     e.preventDefault();
+  }
+
+  private run(action: ShortcutAction, combo: string | null): void {
+    switch (action) {
+      case "search":
+        return this.openSearch();
+      case "bookmarks":
+        return void this.openBookmarks();
+      case "toggleBookmark":
+        return void this.toggleBookmark();
+      case "palette":
+        return this.openPalette();
+      case "contextMenu":
+        return this.openContextMenuAtRow();
+      case "settings":
+        return this.openSettings();
+      case "announceLocation":
+        return this.announceLocation();
+      case "editLocation":
+        // Bound to "/", the box starts with it, as in GNOME Files.
+        return combo === "/" ? this.breadcrumbs.edit("/") : this.breadcrumbs.edit();
+    }
   }
 }
 

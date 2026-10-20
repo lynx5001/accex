@@ -54,6 +54,15 @@ export function removeBookmark(path: string): Promise<boolean> {
   return invoke("remove_bookmark", { path });
 }
 
+/** Shortcut overrides: action id → key combination. */
+export function getShortcuts(): Promise<Record<string, string>> {
+  return invoke("get_shortcuts");
+}
+
+export function setShortcuts(shortcuts: Record<string, string>): Promise<void> {
+  return invoke("set_shortcuts", { shortcuts });
+}
+
 export function onFsChange(handler: (change: FsChange) => void): Promise<UnlistenFn> {
   return listen<FsChange>(FS_CHANGE_EVENT, (event) => handler(event.payload));
 }

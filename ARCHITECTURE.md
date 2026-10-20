@@ -131,6 +131,7 @@ This project follows a strict separation between the **Engine** (Rust) and the *
 | `search_files` | `scope`, `query`, `limit`, `showHidden` | `SearchResults` (scope + 2 levels, plus cached deeper folders) |
 | `execute_operation` | `operation`, `path` | `OperationOutcome` (open, copy, cut, paste, delete → trash, rename, bookmark) |
 | `list_bookmarks` / `remove_bookmark` | – / `path` | `Bookmark[]` (`name`, `path`, `isDirectory`; folders first, then files, by name) / `bool` |
+| `get_shortcuts` / `set_shortcuts` | – / `shortcuts` | `Record<string, string>` (action id → key combination; only changed shortcuts) / – |
 
 Event: `fs-change` with an `FsChange` payload whenever the watched folder changes.
 Errors are serialized as `{ kind, path, message }`; the UI maps `kind` to the `error.*` i18n keys.
