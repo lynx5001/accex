@@ -1,4 +1,4 @@
-# Accessible File Explorer - Gemini Memory
+# Accex - Gemini Memory
 
 ## Critical Architecture Alert
 *   **NO EGUI:** The existing `main.rs` uses `egui`. This is deprecated for this project.

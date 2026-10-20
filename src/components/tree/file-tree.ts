@@ -12,18 +12,13 @@
 import type { FileEntry } from "../../bridge/types";
 import { formatDate, formatShortDate, formatSize, t } from "../../i18n";
 
-export type TreeItem =
-  | { type: "entry"; entry: FileEntry; /** Shown for search results. */ location?: string }
-  | { type: "more"; label: string }
-  | { type: "placeholder"; label: string };
+export type TreeItem = { type: "entry"; entry: FileEntry } | { type: "placeholder"; label: string };
 
 export interface TreeHandlers {
   /** Enter / double click / Right arrow on a folder. */
   onActivate(item: TreeItem, index: number): void;
   /** Left arrow, Backspace, Alt+Up, Cmd+Up. */
   onGoUp(): void;
-  /** Escape inside the list. */
-  onEscape(): void;
   /** Up arrow on the first row moves to the breadcrumb. */
   onExitTop(): void;
 }
@@ -35,7 +30,7 @@ function keyOf(item: TreeItem): string {
   return item.type === "entry" ? `e:${item.entry.path}` : `${item.type}:${item.label}`;
 }
 
-/** Spoken/visible description: type, size, date (and location in search). */
+/** Spoken description: type, size, date (and the folder, for search results). */
 export function describeEntry(entry: FileEntry, location?: string): string {
   const parts: string[] = [];
   if (entry.kind === "directory") parts.push(t("kind.directory"));
@@ -141,6 +136,16 @@ export class FileTree {
     this.focusActive();
   }
 
+  /** Screen box of the active row (to open a context menu there). */
+  activeRowRect(): DOMRect | null {
+    return this.rowFor(this.active)?.getBoundingClientRect() ?? null;
+  }
+
+  /** Index of the row an event happened on, if any. */
+  indexAt(e: Event): number | null {
+    return this.indexFromEvent(e);
+  }
+
   private rowFor(index: number): HTMLElement | undefined {
     const item = this.items[index];
     return item ? this.rows.get(keyOf(item)) : undefined;
@@ -231,8 +236,7 @@ export class FileTree {
       if (entry.kind === "directory") row.setAttribute("aria-expanded", "false");
       else row.removeAttribute("aria-expanded");
       row.dataset.kind = entry.kind;
-      this.setRowContent(row, entry.name, describeEntry(entry, item.location), metaId, {
-        where: item.location ?? "",
+      this.setRowContent(row, entry.name, describeEntry(entry), metaId, {
         size: entry.size !== null ? formatSize(entry.size) : "",
         modified: entry.modified !== null ? formatShortDate(entry.modified) : "",
       });
@@ -241,9 +245,8 @@ export class FileTree {
       row.removeAttribute("aria-describedby");
       row.removeAttribute("aria-expanded");
       row.dataset.kind = item.type;
-      if (item.type === "placeholder") row.setAttribute("aria-disabled", "true");
-      else row.removeAttribute("aria-disabled");
-      this.setRowContent(row, item.label, "", "", { where: "", size: "", modified: "" });
+      row.setAttribute("aria-disabled", "true");
+      this.setRowContent(row, item.label, "", "", { size: "", modified: "" });
     }
   }
 
@@ -257,14 +260,13 @@ export class FileTree {
     name: string,
     meta: string,
     metaId: string,
-    columns: { where: string; size: string; modified: string },
+    columns: { size: string; modified: string },
   ): void {
     let nameEl = row.querySelector<HTMLElement>(".row-name");
     let metaEl = row.querySelector<HTMLElement>(".row-meta");
-    let whereEl = row.querySelector<HTMLElement>(".row-where");
     let sizeEl = row.querySelector<HTMLElement>(".row-size");
     let modifiedEl = row.querySelector<HTMLElement>(".row-modified");
-    if (!nameEl || !metaEl || !whereEl || !sizeEl || !modifiedEl) {
+    if (!nameEl || !metaEl || !sizeEl || !modifiedEl) {
       const span = (className: string) => {
         const el = document.createElement("span");
         el.className = className;
@@ -272,17 +274,15 @@ export class FileTree {
       };
       nameEl = span("row-name");
       metaEl = span("row-meta");
-      whereEl = span("row-where");
       sizeEl = span("row-size");
       modifiedEl = span("row-modified");
       const label = span("row-label");
-      label.append(nameEl, whereEl);
-      for (const el of [whereEl, sizeEl, modifiedEl]) el.setAttribute("aria-hidden", "true");
+      label.append(nameEl);
+      for (const el of [sizeEl, modifiedEl]) el.setAttribute("aria-hidden", "true");
       row.replaceChildren(label, sizeEl, modifiedEl, metaEl);
     }
     if (nameEl.textContent !== name) nameEl.textContent = name;
     if (metaEl.textContent !== meta) metaEl.textContent = meta;
-    if (whereEl.textContent !== columns.where) whereEl.textContent = columns.where;
     if (sizeEl.textContent !== columns.size) sizeEl.textContent = columns.size;
     if (modifiedEl.textContent !== columns.modified) modifiedEl.textContent = columns.modified;
     metaEl.id = metaId;
@@ -343,9 +343,6 @@ export class FileTree {
         if (item?.type === "entry" && item.entry.kind === "directory") {
           this.handlers.onActivate(item, this.active);
         }
-        break;
-      case "Escape":
-        this.handlers.onEscape();
         break;
       default:
         // "/" is left to the app: it opens the location box (no name holds one)

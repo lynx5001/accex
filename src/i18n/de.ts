@@ -2,7 +2,7 @@ import type { Messages } from "./en";
 
 /** German strings. Missing keys fall back to English. */
 export const de: Partial<Messages> = {
-  "app.title": "Barrierefreier Dateimanager",
+  "app.title": "Accex",
   "location.label": "Aktueller Ort",
   "location.announce": "Aktueller Ort: {path}",
   "location.root": "Stammverzeichnis",
@@ -16,7 +16,6 @@ export const de: Partial<Messages> = {
   "date.today": "Heute {time}",
 
   "tree.label": "Inhalt von {name}",
-  "tree.searchLabel": "Suchergebnisse für {query}",
   "tree.loading": "Wird geladen…",
   "tree.empty": "Dieser Ordner ist leer",
   "tree.noResults": "Keine Ergebnisse",
@@ -36,14 +35,15 @@ export const de: Partial<Messages> = {
   "nav.fallback": "Ort nicht mehr verfügbar. Gewechselt zu {name}.",
 
   "search.dialogLabel": "Suche",
-  "search.inputLabel": "Suche in {name}. Eingabe zum Suchen, Escape zum Abbrechen.",
+  "search.inputLabel":
+    "Suche in {name}. Eingabe zum Suchen, Pfeiltasten für die Ergebnisse, Escape zum Schließen.",
+  "search.resultsLabel": "Suchergebnisse",
   "search.placeholder": "Name, Typ oder Pfad…",
   "search.searching": "Suche läuft…",
   "search.results": "{count} Ergebnisse",
   "search.resultsOne": "1 Ergebnis",
   "search.resultsTruncated": "{shown} von {total} Ergebnissen angezeigt",
   "search.noResults": "Keine Ergebnisse für {query}",
-  "search.closed": "Suchergebnisse geschlossen",
 
   "palette.dialogLabel": "Befehle",
   "palette.inputLabel": "Befehl für {name}. Tippen zum Filtern, Pfeil runter für Vorschläge.",
@@ -52,13 +52,16 @@ export const de: Partial<Messages> = {
   "palette.noMatch": "Kein passender Befehl",
   "palette.renameLabel": "Neuer Name für {name}. Eingabe zum Umbenennen, Escape zum Abbrechen.",
   "palette.suggestions": "{count} Vorschläge",
+  "menu.dialogLabel": "Kontextmenü",
+  "menu.label": "Aktionen für {name}",
+  "menu.labelNoTarget": "Aktionen für diesen Ordner",
   "op.open": "Öffnen",
   "op.copy": "Kopieren",
   "op.cut": "Ausschneiden",
   "op.paste": "Einfügen",
   "op.delete": "Löschen",
   "op.rename": "Umbenennen",
-  "op.bookmark": "Aktuellen Ort als Lesezeichen speichern",
+  "op.bookmark": "Lesezeichen hinzufügen",
 
   "outcome.opened": "{name} geöffnet",
   "outcome.copied": "{name} kopiert",
@@ -72,9 +75,9 @@ export const de: Partial<Messages> = {
 
   "bookmarks.dialogLabel": "Lesezeichen",
   "bookmarks.listLabel":
-    "Lesezeichen. Eingabe zum Öffnen, Entfernen zum Löschen, Escape zum Schließen.",
+    "Lesezeichen. Eingabe zum Öffnen, Entfernen oder Strg+D zum Löschen, Escape zum Schließen.",
   "bookmarks.empty":
-    "Noch keine Lesezeichen. Über das Befehlsmenü kann der aktuelle Ordner gespeichert werden.",
+    "Noch keine Lesezeichen. Mit Strg+D wird die markierte Datei oder der Ordner gespeichert.",
   "bookmarks.removed": "Lesezeichen {name} entfernt",
 
   "error.permissionDenied": "Zugriff verweigert auf {name}.",

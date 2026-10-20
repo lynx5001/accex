@@ -1,9 +1,16 @@
 /**
- * The application controller: owns the browse/search state and wires
- * keyboard shortcuts, components and the Rust bridge together.
+ * The application controller: owns the browse state and wires keyboard
+ * shortcuts, components and the Rust bridge together.
  */
 import { announce, announceError, initAnnouncer } from "./accessibility/announcer";
-import { closeAllPopups, isPopupOpen } from "./accessibility/focus-manager";
+import {
+  closeAllPopups,
+  closePopup,
+  isPopupOpen,
+  setPopupAnchor,
+  topPopup,
+  type PopupPoint,
+} from "./accessibility/focus-manager";
 import * as api from "./bridge/commands";
 import {
   isAppError,
@@ -12,17 +19,23 @@ import {
   type Operation,
   type OperationOutcome,
   type OperationType,
+  type SearchHit,
   type SearchResults,
 } from "./bridge/types";
 import { BookmarksPopup } from "./components/bookmarks/bookmarks-popup";
 import { Breadcrumbs } from "./components/breadcrumbs/breadcrumbs";
+import { ContextMenu } from "./components/context-menu/context-menu";
 import { CommandPalette } from "./components/palette/command-palette";
 import { SearchPopup } from "./components/search/search-popup";
 import { FileTree, type TreeItem } from "./components/tree/file-tree";
 import { formatCount, locale, t, type MessageKey } from "./i18n";
 
-const SEARCH_PAGE = 200;
 const REFRESH_DEBOUNCE_MS = 200;
+/** WebKit follows the Menu key / Shift+F10 with a `contextmenu` event; ignore it this long. */
+const MENU_KEY_ECHO_MS = 500;
+
+/** Operations on a file or folder, offered by the context menu and the palette. */
+const ITEM_OPS: OperationType[] = ["open", "copy", "cut", "paste", "delete", "rename", "bookmark"];
 
 function $<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -55,10 +68,11 @@ function signature(entries: FileEntry[]): string {
 
 export class App {
   private listing: DirectoryListing | null = null;
-  private search: { query: string; limit: number; results: SearchResults } | null = null;
   /** Folder path → path of the item that was focused there. */
   private readonly focusMemory = new Map<string, string>();
   private refreshTimer: number | undefined;
+  /** When the Menu key / Shift+F10 was last pressed (see MENU_KEY_ECHO_MS). */
+  private menuKeyAt = -Infinity;
   private readonly keyListener = (e: KeyboardEvent) => this.onGlobalKey(e);
   private readonly unlisten: Promise<() => void>;
 
@@ -66,13 +80,13 @@ export class App {
   private readonly breadcrumbs: Breadcrumbs;
   private readonly searchPopup: SearchPopup;
   private readonly palette: CommandPalette;
+  private readonly contextMenu: ContextMenu;
   private readonly bookmarks: BookmarksPopup;
 
   constructor() {
     this.tree = new FileTree($("file-list"), {
       onActivate: (item) => void this.activate(item),
       onGoUp: () => void this.goUp(),
-      onEscape: () => this.exitSearch(),
       onExitTop: () => this.focusBreadcrumb(),
     });
     this.breadcrumbs = new Breadcrumbs($("breadcrumbs"), $("location-input"), {
@@ -80,14 +94,17 @@ export class App {
       onFocusContent: () => this.tree.focusActive(),
       onSubmitLocation: (input) => this.goToLocation(input),
     });
-    this.searchPopup = new SearchPopup($("search-dialog"), $("search-input"));
+    this.searchPopup = new SearchPopup($("search-dialog"), $("search-input"), $("search-results"));
     this.palette = new CommandPalette($("palette-dialog"), $("palette-input"), $("palette-list"));
     this.bookmarks = new BookmarksPopup($("bookmarks-dialog"), $("bookmarks-list"));
+    this.contextMenu = new ContextMenu($("context-dialog"), $("context-menu"));
+    $("file-list").addEventListener("contextmenu", (e) => this.onRightClick(e));
 
+    setPopupAnchor($("location"));
     $("search-button").addEventListener("click", () => this.openSearch());
     document.addEventListener("keydown", this.keyListener);
     this.unlisten = api.onFsChange((change) => {
-      if (!this.search && change.directory === this.listing?.path) this.scheduleRefresh();
+      if (change.directory === this.listing?.path) this.scheduleRefresh();
     });
   }
 
@@ -111,7 +128,7 @@ export class App {
 
   private rememberFocus(): void {
     const item = this.tree.activeItem;
-    if (this.listing && !this.search && item?.type === "entry") {
+    if (this.listing && item?.type === "entry") {
       this.focusMemory.set(this.listing.path, item.entry.path);
     }
   }
@@ -130,7 +147,6 @@ export class App {
 
   private showListing(listing: DirectoryListing, focusPath?: string, focus = true): void {
     this.listing = listing;
-    this.search = null;
     document.title = `${listing.name} – ${t("app.title")}`;
     this.breadcrumbs.render(listing.breadcrumbs);
     this.tree.setItems(this.entryItems(listing), {
@@ -202,10 +218,6 @@ export class App {
   }
 
   private async goUp(): Promise<void> {
-    if (this.search) {
-      this.exitSearch();
-      return;
-    }
     const listing = this.listing;
     if (!listing?.parent) {
       announce(t("nav.atRoot"));
@@ -222,7 +234,7 @@ export class App {
   /** Re-reads the current folder, keeping focus on the same item if possible. */
   private async refresh(focusPath?: string, focusIndex?: number): Promise<void> {
     const current = this.listing;
-    if (!current || this.search) return;
+    if (!current) return;
     try {
       const listing = await api.readDirectory(current.path);
       if (focusPath === undefined && focusIndex === undefined) {
@@ -243,10 +255,6 @@ export class App {
   }
 
   private async activate(item: TreeItem): Promise<void> {
-    if (item.type === "more") {
-      if (this.search) await this.runSearch(this.search.query, this.search.limit + SEARCH_PAGE);
-      return;
-    }
     if (item.type !== "entry") return;
     if (item.entry.kind === "directory") {
       await this.navigate(item.entry.path);
@@ -260,60 +268,36 @@ export class App {
   private openSearch(): void {
     const scope = this.listing;
     if (!scope) return;
-    this.searchPopup.open(
-      scope.name,
-      () => this.tree.focusActive(),
-      (query) => void this.submitSearch(query),
-    );
+    const backToList = (ok: boolean) => {
+      if (!ok) this.tree.focusActive();
+    };
+    this.searchPopup.open({
+      scopeName: scope.name,
+      restoreFallback: () => this.tree.focusActive(),
+      search: (query, limit) => this.search(scope.path, query, limit),
+      isLocation: looksLikePath,
+      onLocation: (input) => void this.goToLocation(input).then(backToList),
+      onPick: (hit) => void this.reveal(hit).then(backToList),
+    });
   }
 
-  private async submitSearch(query: string): Promise<void> {
-    if (looksLikePath(query)) {
-      if (!(await this.goToLocation(query))) this.tree.focusActive();
-      return;
-    }
-    await this.runSearch(query, SEARCH_PAGE);
-  }
-
-  private async runSearch(query: string, limit: number): Promise<void> {
-    const scope = this.listing;
-    if (!scope) return;
-    if (!this.search) this.rememberFocus();
-    const previousCount = this.search?.query === query ? this.search.results.hits.length : 0;
+  private async search(scope: string, query: string, limit: number): Promise<SearchResults | null> {
     announce(t("search.searching"));
-    this.tree.setBusy(true);
     try {
-      const results = await api.searchFiles(scope.path, query, limit);
-      this.search = { query, limit, results };
-      const items: TreeItem[] = results.hits.map((hit) => ({
-        type: "entry",
-        entry: hit,
-        location: hit.parent,
-      }));
-      if (!items.length) items.push({ type: "placeholder", label: t("tree.noResults") });
-      if (results.truncated) {
-        items.push({
-          type: "more",
-          label:
-            results.total > results.hits.length
-              ? t("tree.moreResults", {
-                  shown: formatCount(results.hits.length),
-                  total: formatCount(results.total),
-                })
-              : t("tree.moreResultsUnknown", { shown: formatCount(results.hits.length) }),
-        });
-      }
-      this.tree.setItems(items, {
-        label: t("tree.searchLabel", { query }),
-        focusIndex: previousCount,
-        focus: true,
-      });
+      const results = await api.searchFiles(scope, query, limit);
       announce(this.resultsMessage(query, results));
+      return results;
     } catch (err) {
-      this.tree.setBusy(false);
       announceError(errorMessage(err));
-      this.tree.focusActive();
+      return null;
     }
+  }
+
+  /** Opens a found folder, or a found file's folder with the file focused. */
+  private reveal(hit: SearchHit): Promise<boolean> {
+    return hit.kind === "directory"
+      ? this.navigate(hit.path)
+      : this.navigate(hit.parent, { focusPath: hit.path });
   }
 
   private resultsMessage(query: string, r: SearchResults): string {
@@ -330,27 +314,59 @@ export class App {
       : t("search.results", { count: formatCount(shown) });
   }
 
-  /** Escape on results: restore the folder contents and previous focus. */
-  private exitSearch(): void {
-    if (!this.search || !this.listing) return;
-    this.search = null;
-    void this.navigate(this.listing.path, { quiet: true }).then(() => announce(t("search.closed")));
-  }
-
   // ------------------------------------------------------------ operations
 
   private openPalette(): void {
     const item = this.tree.activeItem;
     const target = item?.type === "entry" ? item.entry : null;
-    const available: OperationType[] = target
-      ? ["open", "copy", "cut", "paste", "delete", "rename", "bookmark"]
-      : ["paste", "bookmark"];
     this.palette.open({
       targetName: target?.name ?? null,
-      available,
+      available: target ? ITEM_OPS : ["paste", "bookmark"],
       restoreFallback: () => this.tree.focusActive(),
       onRun: (op, newName) => void this.runOperation(op, target, newName),
     });
+  }
+
+  /**
+   * Opens the context menu at `at` for the active row, or for the current
+   * folder when `onItem` is false (a right click on empty space).
+   */
+  private openContextMenu(at: PopupPoint, onItem = true): void {
+    const item = this.tree.activeItem;
+    const target = onItem && item?.type === "entry" ? item.entry : null;
+    this.contextMenu.open({
+      at,
+      targetName: target?.name ?? null,
+      available: target ? ["open", "cut", "copy", "paste", "rename", "delete"] : ["paste"],
+      restoreFallback: () => this.tree.focusActive(),
+      onRun: (op) => {
+        // Rename needs a new name: the palette's prompt asks for it.
+        if (op === "rename" && target) {
+          this.palette.openRename({
+            targetName: target.name,
+            available: ITEM_OPS,
+            restoreFallback: () => this.tree.focusActive(),
+            onRun: (renameOp, newName) => void this.runOperation(renameOp, target, newName),
+          });
+        } else {
+          void this.runOperation(op, target);
+        }
+      },
+    });
+  }
+
+  /** Menu key / Shift+F10: open the menu just below the active row's name. */
+  private openContextMenuAtRow(): void {
+    const rect = this.tree.activeRowRect() ?? $("file-list").getBoundingClientRect();
+    this.openContextMenu({ x: rect.left + 48, y: rect.bottom, above: rect.top });
+  }
+
+  private onRightClick(e: MouseEvent): void {
+    e.preventDefault();
+    if (isPopupOpen() || performance.now() - this.menuKeyAt < MENU_KEY_ECHO_MS) return;
+    const index = this.tree.indexAt(e);
+    if (index !== null) this.tree.focusIndex(index);
+    this.openContextMenu({ x: e.clientX, y: e.clientY }, index !== null);
   }
 
   private async runOperation(
@@ -360,8 +376,9 @@ export class App {
   ): Promise<void> {
     const current = this.listing;
     if (!current) return;
-    // Paste and bookmark act on the current folder; the rest on the item.
-    const path = op === "paste" || op === "bookmark" || !target ? current.path : target.path;
+    // Paste acts on the current folder; the rest on the item (bookmark falls
+    // back to the current folder when no item is focused).
+    const path = op === "paste" || !target ? current.path : target.path;
     const operation: Operation =
       op === "rename" ? { type: op, newName: newName ?? "" } : { type: op };
     try {
@@ -394,28 +411,19 @@ export class App {
         );
         return;
       case "pasted":
-        await this.reloadView(outcome.path, index);
+        await this.refresh(outcome.path, index);
         announce(
           t(outcome.mode === "copy" ? "outcome.pasted" : "outcome.moved", { name: outcome.name }),
         );
         return;
       case "renamed":
-        await this.reloadView(outcome.path, index);
+        await this.refresh(outcome.path, index);
         announce(t("outcome.renamed", { name: outcome.name }));
         return;
       case "deleted":
-        await this.reloadView(undefined, index);
+        await this.refresh(undefined, index);
         announce(t("outcome.deleted", { name: outcome.name }));
         return;
-    }
-  }
-
-  private async reloadView(focusPath: string | undefined, focusIndex: number): Promise<void> {
-    if (this.search) {
-      await this.runSearch(this.search.query, this.search.limit);
-      this.tree.focusIndex(focusIndex);
-    } else {
-      await this.refresh(focusPath, focusIndex);
     }
   }
 
@@ -425,7 +433,11 @@ export class App {
     const list = await api.listBookmarks();
     this.bookmarks.open(list, {
       restoreFallback: () => this.tree.focusActive(),
-      onGo: (b) => void this.navigate(b.path),
+      // Folders open; files open their folder with the file focused.
+      onGo: (b) =>
+        void this.goToLocation(b.path).then((ok) => {
+          if (!ok) this.tree.focusActive();
+        }),
       onRemove: async (b) => {
         try {
           await api.removeBookmark(b.path);
@@ -436,6 +448,28 @@ export class App {
         }
       },
     });
+  }
+
+  /**
+   * Bookmarks the focused file or folder (the current folder if none), or
+   * removes the bookmark when it already exists.
+   */
+  private async toggleBookmark(): Promise<void> {
+    const item = this.tree.activeItem;
+    const path = item?.type === "entry" ? item.entry.path : this.listing?.path;
+    if (!path) return;
+    try {
+      const outcome = await api.executeOperation({ type: "bookmark" }, path);
+      if (outcome.type !== "bookmarked") return;
+      if (outcome.added) {
+        announce(t("outcome.bookmarked", { name: outcome.name }));
+      } else {
+        await api.removeBookmark(path);
+        announce(t("bookmarks.removed", { name: outcome.name }));
+      }
+    } catch (err) {
+      announceError(errorMessage(err));
+    }
   }
 
   // -------------------------------------------------------------- keyboard
@@ -450,16 +484,39 @@ export class App {
   }
 
   private onGlobalKey(e: KeyboardEvent): void {
-    if (isPopupOpen()) return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
+    const menuKey = e.key === "ContextMenu" || (e.shiftKey && e.key === "F10");
+    if (menuKey) this.menuKeyAt = performance.now();
+    const popupKey =
+      mod && !e.altKey && key === "f"
+        ? "search-dialog"
+        : mod && !e.altKey && key === "b"
+          ? "bookmarks-dialog"
+          : mod && !e.altKey && key === "k"
+            ? "palette-dialog"
+            : menuKey
+              ? "context-dialog"
+              : null;
 
-    if (mod && !e.altKey && key === "f") this.openSearch();
-    else if (mod && !e.altKey && key === "b") void this.openBookmarks();
+    // While a popup is open, only its own shortcut works: it closes it again.
+    if (isPopupOpen()) {
+      const top = topPopup();
+      if (top && popupKey === top.id) {
+        e.preventDefault();
+        closePopup(top);
+      }
+      return;
+    }
+
+    if (popupKey === "search-dialog") this.openSearch();
+    else if (popupKey === "bookmarks-dialog") void this.openBookmarks();
+    else if (popupKey === "palette-dialog") this.openPalette();
+    else if (popupKey === "context-dialog") this.openContextMenuAtRow();
+    else if (mod && !e.altKey && key === "d") void this.toggleBookmark();
     else if (mod && !e.altKey && key === "l") this.announceLocation();
     else if (e.key === "/" && !mod && !e.altKey && !(e.target instanceof HTMLInputElement))
       this.breadcrumbs.edit("/");
-    else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) this.openPalette();
     else if ((e.altKey || e.metaKey) && e.key === "ArrowUp" && !this.tree.hasFocus())
       void this.goUp();
     else if (e.target === document.body && e.key.startsWith("Arrow")) this.tree.focusActive();
@@ -477,6 +534,7 @@ function localizeDocument(): void {
   $("file-list").setAttribute("aria-label", t("tree.loading"));
   $("location-input").setAttribute("aria-label", t("location.edit"));
   $("search-button").setAttribute("aria-label", t("location.search"));
+  $("context-dialog").setAttribute("aria-label", t("menu.dialogLabel"));
 }
 
 /** Localizes the static markup, connects live regions and creates the app. */

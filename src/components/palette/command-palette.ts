@@ -73,6 +73,12 @@ export class CommandPalette {
     openPopup(this.dialog, { initialFocus: this.input, restoreFallback: ctx.restoreFallback });
   }
 
+  /** Opens straight into the "new name" prompt (Rename from the context menu). */
+  openRename(ctx: PaletteContext): void {
+    this.open(ctx);
+    this.startRename();
+  }
+
   private label(op: OperationType): string {
     return t(`op.${op}` as MessageKey);
   }

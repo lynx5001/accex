@@ -3,7 +3,7 @@
  * ARIA labels, lives here. `{name}` placeholders are filled by `t()`.
  */
 export const en = {
-  "app.title": "Accessible File Explorer",
+  "app.title": "Accex",
   "location.label": "Current location",
   "location.announce": "Current location: {path}",
   "location.separator": " / ",
@@ -18,7 +18,6 @@ export const en = {
   "date.today": "Today {time}",
 
   "tree.label": "Contents of {name}",
-  "tree.searchLabel": "Search results for {query}",
   "tree.loading": "Loading…",
   "tree.empty": "This folder is empty",
   "tree.noResults": "No results",
@@ -38,14 +37,15 @@ export const en = {
   "nav.fallback": "Location no longer available. Moved to {name}.",
 
   "search.dialogLabel": "Search",
-  "search.inputLabel": "Search in {name}. Press Enter to search, Escape to cancel.",
+  "search.inputLabel":
+    "Search in {name}. Press Enter to search, arrow keys to browse results, Escape to close.",
+  "search.resultsLabel": "Search results",
   "search.placeholder": "Name, type or path…",
   "search.searching": "Searching…",
   "search.results": "{count} results",
   "search.resultsOne": "1 result",
   "search.resultsTruncated": "Showing {shown} of {total} results",
   "search.noResults": "No results for {query}",
-  "search.closed": "Search results closed",
 
   "palette.dialogLabel": "Commands",
   "palette.inputLabel": "Command for {name}. Type to filter, arrow down for suggestions.",
@@ -54,13 +54,16 @@ export const en = {
   "palette.noMatch": "No matching command",
   "palette.renameLabel": "New name for {name}. Press Enter to rename, Escape to cancel.",
   "palette.suggestions": "{count} suggestions",
+  "menu.dialogLabel": "Context menu",
+  "menu.label": "Actions for {name}",
+  "menu.labelNoTarget": "Actions for this folder",
   "op.open": "Open",
   "op.copy": "Copy",
   "op.cut": "Cut",
   "op.paste": "Paste",
   "op.delete": "Delete",
   "op.rename": "Rename",
-  "op.bookmark": "Bookmark current path",
+  "op.bookmark": "Add bookmark",
 
   "outcome.opened": "Opened {name}",
   "outcome.copied": "Copied {name}",
@@ -73,8 +76,8 @@ export const en = {
   "outcome.alreadyBookmarked": "{name} is already bookmarked",
 
   "bookmarks.dialogLabel": "Bookmarks",
-  "bookmarks.listLabel": "Bookmarks. Enter to open, Delete to remove, Escape to close.",
-  "bookmarks.empty": "No bookmarks yet. Use the command menu to bookmark the current folder.",
+  "bookmarks.listLabel": "Bookmarks. Enter to open, Delete or Ctrl+D to remove, Escape to close.",
+  "bookmarks.empty": "No bookmarks yet. Press Ctrl+D on a file or folder to add one.",
   "bookmarks.removed": "Removed bookmark {name}",
 
   "error.permissionDenied": "Access denied to {name}.",

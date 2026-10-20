@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
-    <title data-i18n="app.title">Accessible File Explorer</title>
+    <title data-i18n="app.title">Accex</title>
   </head>
   <body>
     <!--
@@ -48,17 +48,21 @@
       </div>
     </main>
 
-    <dialog id="search-dialog" class="popup" aria-labelledby="search-title">
-      <h2 id="search-title" class="popup-title" data-i18n="search.dialogLabel">Search</h2>
+    <dialog id="search-dialog" class="popup search-popup" aria-labelledby="search-title">
+      <h2 id="search-title" class="visually-hidden" data-i18n="search.dialogLabel">Search</h2>
       <input
         id="search-input"
-        class="popup-input"
+        class="popup-input search-input"
         type="search"
-        role="searchbox"
+        role="combobox"
         autocomplete="off"
         spellcheck="false"
+        aria-autocomplete="none"
+        aria-expanded="false"
+        aria-controls="search-results"
         aria-label="Search"
       />
+      <ul id="search-results" class="popup-list search-results" role="listbox" hidden></ul>
     </dialog>
 
     <dialog id="palette-dialog" class="popup" aria-labelledby="palette-title">
@@ -76,6 +80,10 @@
         aria-label="Command"
       />
       <ul id="palette-list" class="popup-list" role="listbox" aria-label="Commands" hidden></ul>
+    </dialog>
+
+    <dialog id="context-dialog" class="popup context-popup" aria-label="Context menu">
+      <ul id="context-menu" class="context-menu" role="menu"></ul>
     </dialog>
 
     <dialog id="bookmarks-dialog" class="popup" aria-labelledby="bookmarks-title">

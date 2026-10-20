@@ -8,14 +8,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-/// A saved location.
+/// A saved file or folder.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bookmark {
-    /// Display name (the folder name by default).
+    /// Display name (the file or folder name by default).
     pub name: String,
-    /// Absolute folder path.
+    /// Absolute path.
     pub path: PathBuf,
+    /// Folder or file; bookmarks saved before files were allowed are folders.
+    #[serde(default = "folder")]
+    pub is_directory: bool,
+}
+
+fn folder() -> bool {
+    true
 }
 
 /// On-disk shape of the config file. New settings get `#[serde(default)]`
@@ -50,9 +57,12 @@ impl BookmarkStore {
         }
     }
 
-    /// All bookmarks in insertion order.
-    pub fn list(&self) -> &[Bookmark] {
-        &self.config.bookmarks
+    /// All bookmarks: folders first, then files, each alphabetically
+    /// (case-insensitive). The file keeps insertion order.
+    pub fn list(&self) -> Vec<Bookmark> {
+        let mut sorted = self.config.bookmarks.clone();
+        sorted.sort_by_cached_key(|b| (!b.is_directory, b.name.to_lowercase(), b.path.clone()));
+        sorted
     }
 
     /// Adds a bookmark for `path` unless one exists. Returns `true` if added.
@@ -67,6 +77,7 @@ impl BookmarkStore {
         self.config.bookmarks.push(Bookmark {
             name,
             path: path.to_path_buf(),
+            is_directory: path.is_dir(),
         });
         self.save()?;
         Ok(true)
@@ -124,6 +135,31 @@ mod tests {
         assert!(store.remove(Path::new("/a")).unwrap());
         assert!(!store.remove(Path::new("/a")).unwrap());
         assert!(BookmarkStore::load(&file).list().is_empty());
+    }
+
+    #[test]
+    fn list_puts_folders_first_then_sorts_by_name() {
+        let dir = tempfile::TempDir::new().unwrap();
+        for folder in ["zeta", "Alpha"] {
+            fs::create_dir(dir.path().join(folder)).unwrap();
+        }
+        for file in ["beta.txt", "Aaa.md"] {
+            fs::write(dir.path().join(file), "").unwrap();
+        }
+        let mut store = BookmarkStore::load(&dir.path().join("config.json"));
+        for name in ["beta.txt", "zeta", "Aaa.md", "Alpha"] {
+            store.add(&dir.path().join(name)).unwrap();
+        }
+        let names: Vec<_> = store.list().into_iter().map(|b| b.name).collect();
+        assert_eq!(names, ["Alpha", "zeta", "Aaa.md", "beta.txt"]);
+    }
+
+    #[test]
+    fn old_bookmarks_without_kind_load_as_folders() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("config.json");
+        fs::write(&file, r#"{"bookmarks":[{"name":"a","path":"/a"}]}"#).unwrap();
+        assert!(BookmarkStore::load(&file).list()[0].is_directory);
     }
 
     #[test]

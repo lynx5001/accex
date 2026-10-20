@@ -19,7 +19,8 @@ This project follows a strict separation between the **Engine** (Rust) and the *
 │   │   └── types.ts          # Shared TS/Rust types
 │   ├── components/           # Semantic UI elements
 │   │   ├── breadcrumbs/      # Path navigation
-│   │   ├── search/           # Search popup (role="searchbox")
+│   │   ├── context-menu/     # Right-click / Apps-key menu (role="menu")
+│   │   ├── search/           # Search popup (combobox + results listbox)
 │   │   └── tree/             # File list (role="tree")
 │   ├── i18n/                 # Localization
 │   ├── styles/               # Accessibility-focused CSS
@@ -81,7 +82,8 @@ This project follows a strict separation between the **Engine** (Rust) and the *
         - `types.ts`: TypeScript interfaces mirroring Rust data structures for type safety across the IPC bridge.
     - `src/components/`: Reusable UI components built with semantic HTML and ARIA roles.
         - `tree/`: Implements `role="tree"` for the file list.
-        - `search/`: Implements `role="searchbox"` for the search popup.
+        - `search/`: The search popup: a `combobox` with a `listbox` of results below it.
+        - `context-menu/`: The context menu (`role="menu"`) for file operations, opened at the pointer or the focused row.
         - `breadcrumbs/`: Displays the current path.
     - `src/accessibility/`: Dedicated modules for accessibility features.
         - `focus-manager.ts`: Handles focus traps, restoration, and keyboard navigation.
@@ -106,7 +108,7 @@ This project follows a strict separation between the **Engine** (Rust) and the *
 - **Events:** Uses `window.emit` to push file system changes from the `notify` watcher to the frontend.
 
 ## 3. The Surface (src/)
-- **Semantic HTML:** The UI is a skeletal structure of ARIA roles (`tree`, `treeitem`, `searchbox`).
+- **Semantic HTML:** The UI is a skeletal structure of ARIA roles (`tree`, `treeitem`, `combobox`, `listbox`).
 - **State Management:** The frontend tracks focus and "expanded" states, mirroring the engine's data.
 - **Zero Canvas:** Under no circumstances should GPU-accelerated canvases or custom-drawn components be used for primary navigation elements.
 
@@ -128,7 +130,7 @@ This project follows a strict separation between the **Engine** (Rust) and the *
 | `resolve_location` | `input` | `ResolvedLocation` (canonicalized, must exist) |
 | `search_files` | `scope`, `query`, `limit`, `showHidden` | `SearchResults` (scope + 2 levels, plus cached deeper folders) |
 | `execute_operation` | `operation`, `path` | `OperationOutcome` (open, copy, cut, paste, delete → trash, rename, bookmark) |
-| `list_bookmarks` / `remove_bookmark` | – / `path` | `Bookmark[]` / `bool` |
+| `list_bookmarks` / `remove_bookmark` | – / `path` | `Bookmark[]` (`name`, `path`, `isDirectory`; folders first, then files, by name) / `bool` |
 
 Event: `fs-change` with an `FsChange` payload whenever the watched folder changes.
 Errors are serialized as `{ kind, path, message }`; the UI maps `kind` to the `error.*` i18n keys.

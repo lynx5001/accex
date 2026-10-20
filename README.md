@@ -1,4 +1,4 @@
-# Accessible File Explorer
+# Accex
 
 A high-efficiency, low-noise desktop file explorer optimized for screen reader users and keyboard-centric workflows. Unlike traditional explorers that present complex, multi-pane interfaces, this project focuses on a **predictable, single-stream layout** that minimizes cognitive load for blind and vision-impaired users. It delegates all speech output to the native OS accessibility layer (ARIA) to ensure a seamless experience with JAWS, NVDA, VoiceOver, and Orca.
 
@@ -95,22 +95,31 @@ Implement features in vertical slices to maintain a working application at all t
 [ ...                                           ]
 ```
 
-The location breadcrumb is always the first element. Contents follow. This structure never changes regardless of browse or search state.
+The location breadcrumb is always the first element. Contents follow. This structure never changes; search results appear in the search popup, not in the content area.
 
 ### Search bar (popup)
-- Triggered by shortcut
+- Triggered by shortcut (`Ctrl + F`) or the search button; the input pops up in the top fifth of the window, as wide as the path bar, which stays visible above it
+- The page behind the popup fades to 30% visibility
 - Focus jumps to input immediately on open
 - Results load on `Enter` — no live update while typing
-- Results replace the content area below the current path
-- Each result shows: filename, full parent path, modified date, file type
-- **Virtualization:** Uses high-performance list virtualization to handle 10,000+ items without lag.
+- Results drop down in a list inside the popup; the content area stays as it is
+- Each result shows its folder/file icon, filename and parent path; the spoken label adds type, size and modified date
+- Arrow keys move through the results (focus stays in the input via `aria-activedescendant`); `Enter` on a folder opens it, on a file opens its folder with the file focused
+- Typing a path (`/…`, `~/…`) and pressing `Enter` goes there instead of searching
 - **Search Logic:** Initial v1 uses a flat-file walk; SQLite indexing is utilized for caching previously visited directories.
-- A "more results" item appears at the bottom when results are truncated
+- A "more results" item appears at the bottom when results are truncated (200 per page)
 - **Accessibility:** Announces result count via `aria-live` when results load.
-- `Escape` dismisses and restores the previous content
+- `Escape` dismisses and restores focus to where it was
 
-### Context menu (popup, command palette style)
-- Triggered by `Apps` key (Windows convention, familiar to JAWS users)
+### Context menu
+- Opened by right click (at the pointer), the `Apps` key or `Shift + F10` (below the focused row)
+- A compact `role="menu"`: Open · Cut, Copy, Paste · Rename, Delete; operations that don't apply are shown disabled (empty space offers only Paste)
+- Focus is on the first item; arrows and `Home`/`End` move, `Enter`/`Space` run, `Escape`, `Tab` or the opening key close it
+- Fixed jump keys, shown next to each item and the same in every language: `O` Open, `X` Cut, `C` Copy, `V` Paste, `R` Rename, `D` Delete
+- Rename asks for the new name in the command palette's prompt
+
+### Command palette
+- Triggered by `Ctrl + K`
 - Focus jumps to a text input immediately
 - User types an operation (e.g. `cop`, `del`, `ren`) and suggestions appear live
 - Arrow down to select a suggestion, `Enter` to execute
@@ -129,7 +138,7 @@ The location breadcrumb is always the first element. Contents follow. This struc
 ### Bookmarks (popup)
 - Triggered by shortcut
 - List of saved locations, arrow to navigate, `Enter` to go there
-- Bookmarks are created via the context menu ("Bookmark current path")
+- Bookmarks are created with `Ctrl + D` or the command palette ("Add bookmark")
 - `Escape` dismisses
 
 ---
@@ -141,11 +150,13 @@ The location breadcrumb is always the first element. Contents follow. This struc
 | Navigate into folder | `Enter` |
 | Go up one level | `Backspace` (Win), `Cmd + Up` (Mac), or `Alt + Up` |
 | Open search bar | `Ctrl + F` |
-| Open context menu | `Apps` key or `Shift + F10` |
+| Open context menu | Right click, `Apps` key or `Shift + F10` |
+| Open command palette | `Ctrl + K` |
 | Open bookmarks | `Ctrl + B` |
+| Bookmark focused file or folder | `Ctrl + D`; again to remove it (in the bookmarks list: removes the selected bookmark) |
 | Announce current location | `Ctrl + L` (Status announcement) |
 | Type a location | `/`, or click the location field (Enter to go, Escape to cancel) |
-| Dismiss any popup | `Escape` |
+| Dismiss any popup | `Escape`, or the shortcut that opened it (`Ctrl + F`, `Ctrl + B`, `Ctrl + K`, `Shift + F10`) |
 | Jump to file | `A-Z` (First-letter navigation) |
 | Move through file list | `Arrow Up / Down` |
 
@@ -154,7 +165,7 @@ The location breadcrumb is always the first element. Contents follow. This struc
 ## Accessibility Requirements
 
 - `role="tree"` and `role="treeitem"` for the directory listing
-- `role="searchbox"` for the search input
+- `role="combobox"` for the search input, with a `role="listbox"` of results
 - `role="status"` or `aria-live="polite"` for search result updates and operation feedback
 - `aria-live="assertive"` for errors only
 - `aria-expanded` on folder items (collapsed / expanded state)
@@ -196,7 +207,7 @@ To ensure the high accessibility and performance standards of this project, all 
 All user-facing strings, including `aria-label` and `aria-description` content, must be externalized. The app will detect the OS locale and default to English if the translation is unavailable.
 
 ### 2. Logging & Observability
-The backend uses the `tracing` crate for structured logging. Logs are stored in the platform-specific "logs" directory (e.g., `%AppData%\Local\accessible-explorer\logs` on Windows). PII (filenames) must be sanitized in production logs unless debug mode is active.
+The backend uses the `tracing` crate for structured logging. Logs are stored in the platform-specific "logs" directory (e.g., `%AppData%\Local\org.lynx5001.accex\logs` on Windows). PII (filenames) must be sanitized in production logs unless debug mode is active.
 
 ### 3. Configuration & State
 App state (bookmarks, window position, user preferences) is stored in a JSON file within the platform's standard config directory. SQLite is strictly reserved for the search index and metadata cache, not for configuration.
@@ -267,7 +278,7 @@ The first version focuses on core navigation and search. Everything listed below
 **In scope**
 - Browse mode: navigate the file system with keyboard shortcuts
 - Search popup: find files and folders by name or natural language description
-- Context menu: command palette for file operations with `aria-live` feedback
+- Context menu (right click, `Apps`, `Shift + F10`) and command palette (`Ctrl + K`) for file operations with `aria-live` feedback
 - Bookmarks: save and jump to frequent locations
 - Full screen reader compatibility via ARIA
 - Cross-platform: Windows, macOS, Linux

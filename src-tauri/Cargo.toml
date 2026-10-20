@@ -1,5 +1,5 @@
 [package]
-name = "accessible-file-explorer"
+name = "accex"
 version = "0.1.0"
 description = "A high-efficiency, low-noise desktop file explorer optimized for screen reader users and keyboard-centric workflows."
 authors = ["lynx5001"]
@@ -11,7 +11,7 @@ edition = "2021"
 
 [lib]
 # The `_lib` suffix avoids a name clash with the binary target on Windows.
-name = "accessible_file_explorer_lib"
+name = "accex_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

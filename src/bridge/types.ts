@@ -57,6 +57,7 @@ export interface SearchResults {
 export interface Bookmark {
   name: string;
   path: string;
+  isDirectory: boolean;
 }
 
 /** `state::ClipboardMode` */

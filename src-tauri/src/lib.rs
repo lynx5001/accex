@@ -72,7 +72,7 @@ pub enum Operation {
         /// New file name (not a path).
         new_name: String,
     },
-    /// Bookmark the target folder.
+    /// Bookmark the target file or folder.
     Bookmark,
 }
 
@@ -310,9 +310,6 @@ fn execute_operation(
             })
         }
         Operation::Bookmark => {
-            if !target.is_dir() {
-                return Err(AppError::NotADirectory(target));
-            }
             let added = lock(&state.bookmarks).add(&target)?;
             Ok(OperationOutcome::Bookmarked { name, added })
         }
@@ -322,7 +319,7 @@ fn execute_operation(
 /// All saved bookmarks.
 #[tauri::command]
 fn list_bookmarks(state: State<'_, AppState>) -> Vec<Bookmark> {
-    lock(&state.bookmarks).list().to_vec()
+    lock(&state.bookmarks).list()
 }
 
 /// Removes a bookmark by path.
@@ -343,7 +340,7 @@ fn init_logging(app: &AppHandle) -> Option<tracing_appender::non_blocking::Worke
     });
     let (file_layer, guard) = match app.path().app_log_dir() {
         Ok(dir) => {
-            let appender = tracing_appender::rolling::daily(dir, "accessible-explorer.log");
+            let appender = tracing_appender::rolling::daily(dir, "accex.log");
             let (writer, guard) = tracing_appender::non_blocking(appender);
             (
                 Some(fmt::layer().with_ansi(false).with_writer(writer)),
@@ -360,11 +357,36 @@ fn init_logging(app: &AppHandle) -> Option<tracing_appender::non_blocking::Worke
     guard
 }
 
+/// The bundle identifier before the app was renamed to Accex; its config
+/// directory still holds the user's bookmarks.
+const PREVIOUS_IDENTIFIER: &str = "org.lynx5001.accessible-explorer";
+
+/// Copies the config from the previous identifier's directory when the
+/// current one has none yet. The old file is left in place.
+fn adopt_previous_config(previous: &Path, current: &Path) {
+    if current.exists() || !previous.is_file() {
+        return;
+    }
+    if let Some(dir) = current.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match std::fs::copy(previous, current) {
+        Ok(_) => tracing::info!("adopted config from the previous app identifier"),
+        Err(err) => tracing::warn!(%err, "could not adopt the previous config"),
+    }
+}
+
 fn open_state(app: &AppHandle) -> AppState {
     let paths = app.path();
     let bookmarks = match paths.app_config_dir() {
-        Ok(dir) => BookmarkStore::load(&dir.join("config.json")),
-        Err(_) => BookmarkStore::load(&std::env::temp_dir().join("accessible-explorer.json")),
+        Ok(dir) => {
+            let file = dir.join("config.json");
+            if let Ok(base) = paths.config_dir() {
+                adopt_previous_config(&base.join(PREVIOUS_IDENTIFIER).join("config.json"), &file);
+            }
+            BookmarkStore::load(&file)
+        }
+        Err(_) => BookmarkStore::load(&std::env::temp_dir().join("accex.json")),
     };
     let index = paths
         .app_cache_dir()
@@ -404,4 +426,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn previous_config_is_copied_once_and_never_overwrites() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous = dir.path().join("old").join("config.json");
+        let current = dir.path().join("new").join("config.json");
+        std::fs::create_dir_all(previous.parent().unwrap()).unwrap();
+        std::fs::write(&previous, "old").unwrap();
+
+        adopt_previous_config(&previous, &current);
+        assert_eq!(std::fs::read_to_string(&current).unwrap(), "old");
+        assert!(previous.exists(), "the old file stays in place");
+
+        std::fs::write(&current, "new").unwrap();
+        adopt_previous_config(&previous, &current);
+        assert_eq!(std::fs::read_to_string(&current).unwrap(), "new");
+    }
 }

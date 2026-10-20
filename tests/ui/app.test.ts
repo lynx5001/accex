@@ -64,8 +64,12 @@ async function mount(): Promise<void> {
   await app.start();
 }
 
+/** Paths bookmarked through `execute_operation` in the current test. */
+const bookmarked = new Set<string>();
+
 function installBackend(): void {
   calls = [];
+  bookmarked.clear();
   mockIPC(
     (cmd, args) => {
       const a = (args ?? {}) as Record<string, unknown>;
@@ -87,16 +91,41 @@ function installBackend(): void {
           if (FS[dir]?.some((e) => e.path === input)) return { path: input, isDirectory: false };
           throw { kind: "notFound", path: input, message: "missing" };
         }
-        case "search_files":
+        case "search_files": {
+          if (a.query === "many") {
+            const total = 250;
+            const count = Math.min(a.limit as number, total);
+            const hits = Array.from({ length: count }, (_, i) => ({
+              ...entry(`/home/u/Music/track${i}.mp3`),
+              parent: "/home/u/Music",
+            }));
+            return { hits, total, truncated: count < total };
+          }
           return {
-            hits: [{ ...entry("/home/u/Documents/cv.pdf"), parent: "/home/u/Documents" }],
-            total: 1,
+            hits: [
+              { ...entry("/home/u/Documents", "directory"), parent: "/home/u" },
+              { ...entry("/home/u/Documents/cv.pdf"), parent: "/home/u/Documents" },
+            ],
+            total: 2,
             truncated: false,
           };
-        case "execute_operation":
+        }
+        case "execute_operation": {
+          const name = (a.path as string).split("/").pop();
+          if ((a.operation as { type: string }).type === "bookmark") {
+            const added = !bookmarked.has(a.path as string);
+            bookmarked.add(a.path as string);
+            return { type: "bookmarked", name, added };
+          }
           return { type: "deleted", name: "notes.txt" };
+        }
+        case "remove_bookmark":
+          return bookmarked.delete(a.path as string);
         case "list_bookmarks":
-          return [{ name: "Music", path: "/home/u/Music" }];
+          return [
+            { name: "Music", path: "/home/u/Music", isDirectory: true },
+            { name: "cv.pdf", path: "/home/u/Documents/cv.pdf", isDirectory: false },
+          ];
         default:
           return null;
       }
@@ -214,29 +243,78 @@ describe("browse mode", () => {
 });
 
 describe("popups", () => {
-  it("search: focus jumps to the searchbox, Enter shows results, Escape restores", async () => {
-    const before = focused();
-    key(before, "f", { ctrlKey: true });
-    const input = document.getElementById("search-input") as HTMLInputElement;
+  const searchInput = () => document.getElementById("search-input") as HTMLInputElement;
+  const searchDialog = () => document.getElementById("search-dialog") as HTMLDialogElement;
+  const results = () =>
+    Array.from(document.querySelectorAll<HTMLElement>("#search-results [role=option]"));
+
+  it("search: Enter shows the results in the popup, the list stays as it was", async () => {
+    key(focused(), "f", { ctrlKey: true });
+    const input = searchInput();
     expect(focused()).toBe(input);
-    expect(input.getAttribute("role")).toBe("searchbox");
+    expect(input.getAttribute("role")).toBe("combobox");
 
     input.value = "cv";
     key(input, "Enter");
-    await until(() => tree().getAttribute("aria-label") === "Search results for cv");
+    await until(() => results().length === 2);
+    await until(() => status() === "2 results");
     expect(calls.find((c) => c.cmd === "search_files")?.args).toMatchObject({
       scope: "/home/u",
       query: "cv",
     });
-    expect(focused().getAttribute("aria-label")).toBe("cv.pdf");
-    expect(
-      document.getElementById(focused().getAttribute("aria-describedby")!)?.textContent,
-    ).toContain("in /home/u/Documents");
-    await until(() => status() === "1 result");
+    expect(searchDialog().open).toBe(true);
+    expect(focused()).toBe(input);
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    expect(results().map((r) => r.dataset.kind)).toEqual(["directory", "file"]);
+    expect(results()[1].getAttribute("aria-label")).toContain("in /home/u/Documents");
+    expect(tree().getAttribute("aria-label")).toBe("Contents of u");
+  });
 
-    key(focused(), "Escape");
-    await until(() => tree().getAttribute("aria-label") === "Contents of u");
-    expect(focused().getAttribute("aria-label")).toBe("Documents");
+  it("search: arrows pick a result; Enter on a file opens its folder with it focused", async () => {
+    key(focused(), "f", { ctrlKey: true });
+    const input = searchInput();
+    input.value = "cv";
+    key(input, "Enter");
+    await until(() => results().length === 2);
+    key(input, "ArrowDown");
+    key(input, "ArrowDown");
+    expect(input.getAttribute("aria-activedescendant")).toBe("search-result-1");
+    expect(results()[1].getAttribute("aria-selected")).toBe("true");
+    key(input, "Enter");
+    expect(searchDialog().open).toBe(false);
+    await until(() => focused().getAttribute?.("aria-label") === "cv.pdf");
+    expect(tree().getAttribute("aria-label")).toBe("Contents of Documents");
+  });
+
+  it("search: a folder result opens the folder", async () => {
+    key(focused(), "f", { ctrlKey: true });
+    searchInput().value = "cv";
+    key(searchInput(), "Enter");
+    await until(() => results().length === 2);
+    key(searchInput(), "ArrowDown");
+    key(searchInput(), "Enter");
+    await until(() => tree().getAttribute("aria-label") === "Contents of Documents");
+  });
+
+  it("search: 'show more' loads the next page and continues at the first new hit", async () => {
+    key(focused(), "f", { ctrlKey: true });
+    searchInput().value = "many";
+    key(searchInput(), "Enter");
+    await until(() => results().length === 201);
+    expect(results()[200].textContent).toBe("Show more results (200 of 250)");
+    key(searchInput(), "ArrowUp"); // wraps to "show more"
+    key(searchInput(), "Enter");
+    await until(() => results().length === 250);
+    expect(searchInput().getAttribute("aria-activedescendant")).toBe("search-result-200");
+  });
+
+  it("search: a typed path goes there instead of searching", async () => {
+    key(focused(), "f", { ctrlKey: true });
+    searchInput().value = "~/Music";
+    key(searchInput(), "Enter");
+    expect(searchDialog().open).toBe(false);
+    await until(() => tree().getAttribute("aria-label") === "Contents of Music");
+    expect(calls.some((c) => c.cmd === "search_files")).toBe(false);
   });
 
   it("search: Escape in the popup returns focus without searching", () => {
@@ -252,7 +330,9 @@ describe("popups", () => {
     const before = focused();
     const popups: [string, KeyboardEventInit, string][] = [
       ["f", { ctrlKey: true }, "search-dialog"],
-      ["F10", { shiftKey: true }, "palette-dialog"],
+      ["k", { ctrlKey: true }, "palette-dialog"],
+      ["F10", { shiftKey: true }, "context-dialog"],
+      ["ContextMenu", {}, "context-dialog"],
       ["b", { ctrlKey: true }, "bookmarks-dialog"],
     ];
     for (const [k, init, id] of popups) {
@@ -265,23 +345,43 @@ describe("popups", () => {
     }
   });
 
+  it("each popup's shortcut pressed again closes it and restores focus", async () => {
+    const before = focused();
+    const popups: [string, KeyboardEventInit, string][] = [
+      ["f", { ctrlKey: true }, "search-dialog"],
+      ["k", { ctrlKey: true }, "palette-dialog"],
+      ["F10", { shiftKey: true }, "context-dialog"],
+      ["ContextMenu", {}, "context-dialog"],
+      ["b", { ctrlKey: true }, "bookmarks-dialog"],
+    ];
+    for (const [k, init, id] of popups) {
+      key(before, k, init);
+      const dialog = document.getElementById(id) as HTMLDialogElement;
+      await until(() => dialog.open);
+      key(focused(), k, init);
+      expect(dialog.open).toBe(false);
+      expect(focused()).toBe(before);
+    }
+  });
+
+  it("another popup's shortcut does nothing while a popup is open", async () => {
+    key(focused(), "f", { ctrlKey: true });
+    const search = document.getElementById("search-dialog") as HTMLDialogElement;
+    key(focused(), "b", { ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(search.open).toBe(true);
+    expect((document.getElementById("bookmarks-dialog") as HTMLDialogElement).open).toBe(false);
+  });
+
   it("palette: arrow down on empty input lists all operations", () => {
-    key(focused(), "F10", { shiftKey: true });
+    key(focused(), "k", { ctrlKey: true });
     const input = document.getElementById("palette-input")!;
     expect(focused()).toBe(input);
     key(input, "ArrowDown");
     const options = Array.from(document.querySelectorAll("#palette-list [role=option]")).map(
       (o) => o.textContent,
     );
-    expect(options).toEqual([
-      "Open",
-      "Copy",
-      "Cut",
-      "Paste",
-      "Delete",
-      "Rename",
-      "Bookmark current path",
-    ]);
+    expect(options).toEqual(["Open", "Copy", "Cut", "Paste", "Delete", "Rename", "Add bookmark"]);
     expect(input.getAttribute("aria-expanded")).toBe("true");
     expect(input.getAttribute("aria-activedescendant")).toBe("palette-option-open");
   });
@@ -289,7 +389,7 @@ describe("popups", () => {
   it("palette: typing filters and Enter executes on the focused item", async () => {
     key(focused(), "ArrowDown");
     key(focused(), "ArrowDown"); // notes.txt
-    key(focused(), "ContextMenu");
+    key(focused(), "k", { ctrlKey: true });
     const input = document.getElementById("palette-input") as HTMLInputElement;
     input.value = "del";
     input.dispatchEvent(new Event("input"));
@@ -306,6 +406,108 @@ describe("popups", () => {
     await until(() => status() === "Moved notes.txt to the trash");
   });
 
+  const menuItems = () =>
+    Array.from(document.querySelectorAll<HTMLElement>("#context-menu [role=menuitem]"));
+  const contextDialog = () => document.getElementById("context-dialog") as HTMLDialogElement;
+
+  it("context menu: Shift+F10 opens it on the focused row with focus on the first item", () => {
+    key(focused(), "F10", { shiftKey: true });
+    expect(contextDialog().open).toBe(true);
+    expect(menuItems().map((i) => i.textContent)).toEqual([
+      "Open",
+      "Cut",
+      "Copy",
+      "Paste",
+      "Rename",
+      "Delete",
+    ]);
+    expect(document.getElementById("context-menu")!.getAttribute("aria-label")).toBe(
+      "Actions for Documents",
+    );
+    expect(focused()).toBe(menuItems()[0]);
+    key(focused(), "End");
+    expect(focused().textContent).toBe("Delete");
+    key(focused(), "ArrowDown"); // wraps
+    expect(focused().textContent).toBe("Open");
+    key(focused(), "r"); // jump key
+    expect(focused().textContent).toBe("Rename");
+  });
+
+  it("context menu: fixed keys jump to their item (C copy, X cut, V paste…)", () => {
+    key(focused(), "F10", { shiftKey: true });
+    const jumps: [string, string][] = [
+      ["c", "Copy"],
+      ["x", "Cut"],
+      ["v", "Paste"],
+      ["d", "Delete"],
+      ["o", "Open"],
+      ["C", "Copy"], // with Caps Lock or Shift
+    ];
+    for (const [k, label] of jumps) {
+      key(focused(), k);
+      expect(focused().textContent).toBe(label);
+    }
+    expect(menuItems().map((i) => i.getAttribute("aria-keyshortcuts"))).toEqual([
+      "O",
+      "X",
+      "C",
+      "V",
+      "R",
+      "D",
+    ]);
+    expect(contextDialog().open).toBe(true); // jumping does not run anything
+    expect(calls.some((c) => c.cmd === "execute_operation")).toBe(false);
+  });
+
+  it("context menu: Enter runs the item on the focused file", async () => {
+    key(focused(), "ArrowDown");
+    key(focused(), "ArrowDown"); // notes.txt
+    key(focused(), "ContextMenu");
+    key(focused(), "End"); // Delete
+    key(focused(), "Enter");
+    expect(contextDialog().open).toBe(false);
+    await until(() => status() === "Moved notes.txt to the trash");
+    expect(calls.find((c) => c.cmd === "execute_operation")?.args).toEqual({
+      operation: { type: "delete" },
+      path: "/home/u/notes.txt",
+    });
+  });
+
+  it("context menu: right click selects the row and opens the menu there", () => {
+    const row = rows()[2]; // notes.txt
+    row.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 60 }),
+    );
+    expect(contextDialog().open).toBe(true);
+    expect(rows()[2].getAttribute("aria-selected")).toBe("true");
+    expect(document.getElementById("context-menu")!.getAttribute("aria-label")).toBe(
+      "Actions for notes.txt",
+    );
+  });
+
+  it("context menu: right click on empty space offers only Paste", () => {
+    tree().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    const enabled = menuItems().filter((i) => i.getAttribute("aria-disabled") !== "true");
+    expect(enabled.map((i) => i.textContent)).toEqual(["Paste"]);
+    expect(focused().textContent).toBe("Paste");
+  });
+
+  it("context menu: Rename asks for the new name in the palette prompt", async () => {
+    key(focused(), "F10", { shiftKey: true });
+    key(focused(), "r");
+    key(focused(), "Enter");
+    const input = document.getElementById("palette-input") as HTMLInputElement;
+    expect(focused()).toBe(input);
+    expect(input.value).toBe("Documents");
+    input.value = "Papers";
+    key(input, "Enter");
+    await until(() => calls.some((c) => c.cmd === "execute_operation"));
+    expect(calls.find((c) => c.cmd === "execute_operation")?.args).toEqual({
+      operation: { type: "rename", newName: "Papers" },
+      path: "/home/u/Documents",
+    });
+  });
+
   it("bookmarks: Ctrl+B lists bookmarks and Enter navigates", async () => {
     key(focused(), "b", { ctrlKey: true });
     await until(() => (document.getElementById("bookmarks-dialog") as HTMLDialogElement).open);
@@ -314,6 +516,59 @@ describe("popups", () => {
     expect(list.getAttribute("aria-activedescendant")).toBe("bookmark-0");
     key(list, "Enter");
     await until(() => tree().getAttribute("aria-label") === "Contents of Music");
+  });
+
+  it("bookmarks: Ctrl+D bookmarks the focused file", async () => {
+    key(focused(), "ArrowDown");
+    key(focused(), "ArrowDown"); // notes.txt
+    key(focused(), "d", { ctrlKey: true });
+    await until(() => status() === "Bookmarked notes.txt");
+    expect(calls.find((c) => c.cmd === "execute_operation")?.args).toEqual({
+      operation: { type: "bookmark" },
+      path: "/home/u/notes.txt",
+    });
+  });
+
+  it("bookmarks: Ctrl+D in the list removes the selected bookmark", async () => {
+    key(focused(), "b", { ctrlKey: true });
+    const list = document.getElementById("bookmarks-list")!;
+    await until(() => list.querySelectorAll("[role=option]").length === 2);
+    key(list, "ArrowDown"); // cv.pdf
+    key(list, "d", { ctrlKey: true });
+    await until(() => status() === "Removed bookmark cv.pdf");
+    expect(calls.find((c) => c.cmd === "remove_bookmark")?.args).toEqual({
+      path: "/home/u/Documents/cv.pdf",
+    });
+    await until(() => list.querySelectorAll("[role=option]").length === 1);
+    expect(list.getAttribute("aria-activedescendant")).toBe("bookmark-0");
+    expect((document.getElementById("bookmarks-dialog") as HTMLDialogElement).open).toBe(true);
+  });
+
+  it("bookmarks: Ctrl+D again removes the bookmark", async () => {
+    key(focused(), "ArrowDown");
+    key(focused(), "ArrowDown"); // notes.txt
+    key(focused(), "d", { ctrlKey: true });
+    await until(() => status() === "Bookmarked notes.txt");
+    key(focused(), "d", { ctrlKey: true });
+    await until(() => status() === "Removed bookmark notes.txt");
+    expect(calls.find((c) => c.cmd === "remove_bookmark")?.args).toEqual({
+      path: "/home/u/notes.txt",
+    });
+    expect(bookmarked.has("/home/u/notes.txt")).toBe(false);
+  });
+
+  it("bookmarks: a file bookmark opens its folder with the file focused", async () => {
+    key(focused(), "b", { ctrlKey: true });
+    const list = document.getElementById("bookmarks-list")!;
+    await until(() => list.querySelectorAll("[role=option]").length === 2);
+    const kinds = Array.from(list.querySelectorAll<HTMLElement>("[role=option]")).map(
+      (o) => o.dataset.kind,
+    );
+    expect(kinds).toEqual(["directory", "file"]);
+    key(list, "ArrowDown");
+    key(list, "Enter");
+    await until(() => focused().getAttribute?.("aria-label") === "cv.pdf");
+    expect(tree().getAttribute("aria-label")).toBe("Contents of Documents");
   });
 });
 

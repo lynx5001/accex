@@ -5,5 +5,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    accessible_file_explorer_lib::run()
+    accex_lib::run()
 }

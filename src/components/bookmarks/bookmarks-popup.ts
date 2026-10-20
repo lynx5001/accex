@@ -1,6 +1,8 @@
 /**
  * Bookmarks popup: a focused listbox. Arrows move, Enter opens the
- * location, Delete removes the bookmark, Escape dismisses.
+ * location, Delete or Ctrl+D (the same key that adds one) removes the
+ * bookmark, Escape dismisses. The list arrives
+ * sorted from the backend: folders first, then files, by name.
  */
 import type { Bookmark } from "../../bridge/types";
 import { closePopup, openPopup, registerPopup } from "../../accessibility/focus-manager";
@@ -44,6 +46,7 @@ export class BookmarksPopup {
       li.id = `bookmark-${i}`;
       li.setAttribute("role", "option");
       li.dataset.index = String(i);
+      li.dataset.kind = b.isDirectory ? "directory" : "file";
       const name = document.createElement("span");
       name.className = "row-name";
       name.textContent = b.name;
@@ -51,7 +54,8 @@ export class BookmarksPopup {
       path.className = "row-meta";
       path.textContent = b.path;
       li.append(name, path);
-      li.setAttribute("aria-label", `${b.name}, ${b.path}`);
+      const kind = t(b.isDirectory ? "kind.directory" : "kind.file");
+      li.setAttribute("aria-label", `${b.name}, ${kind}, ${b.path}`);
       return li;
     });
     if (!items.length) {
@@ -83,8 +87,23 @@ export class BookmarksPopup {
     this.ctx?.onGo(bookmark);
   }
 
+  private remove(): void {
+    const bookmark = this.bookmarks[this.active];
+    if (!bookmark || !this.ctx) return;
+    void this.ctx.onRemove(bookmark).then(() => {
+      this.bookmarks.splice(this.active, 1);
+      this.active = Math.min(this.active, Math.max(0, this.bookmarks.length - 1));
+      this.render();
+    });
+  }
+
   private onKeyDown(e: KeyboardEvent): void {
     const n = this.bookmarks.length;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "d") {
+      e.preventDefault();
+      this.remove();
+      return;
+    }
     switch (e.key) {
       case "ArrowDown":
         if (n) this.active = (this.active + 1) % n;
@@ -101,16 +120,9 @@ export class BookmarksPopup {
       case "Enter":
         this.go(this.active);
         return;
-      case "Delete": {
-        const bookmark = this.bookmarks[this.active];
-        if (!bookmark || !this.ctx) return;
-        void this.ctx.onRemove(bookmark).then(() => {
-          this.bookmarks.splice(this.active, 1);
-          this.active = Math.min(this.active, Math.max(0, this.bookmarks.length - 1));
-          this.render();
-        });
+      case "Delete":
+        this.remove();
         break;
-      }
       default:
         return;
     }
