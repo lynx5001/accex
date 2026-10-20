@@ -1,318 +1,237 @@
 # Accex
 
-A high-efficiency, low-noise desktop file explorer optimized for screen reader users and keyboard-centric workflows. Unlike traditional explorers that present complex, multi-pane interfaces, this project focuses on a **predictable, single-stream layout** that minimizes cognitive load for blind and vision-impaired users. It delegates all speech output to the native OS accessibility layer (ARIA) to ensure a seamless experience with JAWS, NVDA, VoiceOver, and Orca.
+Accex is a file explorer for people who use a screen reader.
 
----
+Most file explorers are built for the eye: sidebars, toolbars, ribbons,
+preview panes, several regions competing for attention. With a screen reader,
+every one of those regions is something to tab through, remember, and get lost
+in. Accex goes the other way. There is exactly one layout — where you are, then
+what's in it — and it never changes. Everything else (search, bookmarks,
+commands, settings) is a popup that takes focus when it opens and gives it back
+when it closes.
 
-## Developer Onboarding & Getting Started
-
-### Prerequisites
-- **Rust Toolchain:** Latest stable version.
-- **Node.js & npm/pnpm:** Required for the Tauri frontend.
-- **System Dependencies:**
-  - **Linux:** `libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `wget`, `libssl-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
-  - **Windows:** WebView2 runtime.
-
-### Quality Standards
-- **Linting:** All Rust code must pass `cargo clippy`. Frontend code must pass `prettier --check`.
-- **Formatting:** Run `cargo fmt` before every commit.
-- **Documentation:** Public Rust modules and functions must be documented with `///` rustdocs.
-
-### Setup
-1. Clone the repository.
-2. Install frontend dependencies: `npm install`.
-3. Run in development mode: `npm run tauri dev`.
-4. Build release: `npm run tauri build`.
-
----
-
-## Development Methodology
-
-The project follows a **Top-Down Decomposition** approach. Developers should avoid "bottom-up" coding (building isolated features first) and instead focus on defining the application's contract and flow.
-
-### 1. Interface-First Definition (The Bridge)
-Before implementing logic, define the communication layer between Rust and the Frontend.
-- Define the Tauri Command signatures (e.g., `read_directory`, `execute_operation`).
-- Define the TypeScript interfaces for the data models to ensure type safety across the IPC bridge.
-
-### 2. Core Domain Logic (Rust Modules)
-Implement the "Source of Truth" in the backend.
-- **Sub-process A:** File System abstraction (handling paths, metadata).
-- **Sub-process B:** The Watcher (handling real-time updates).
-- **Sub-process C:** The Search Engine (SQLite & Flat-walk).
-
-### 3. Structural UI (Accessibility First)
-Build the UI "Skeleton" using semantic HTML before adding styles or complex state.
-- Map the ARIA roles (`tree`, `searchbox`, `status`) to the data provided by the backend.
-- Verify that a screen reader can "see" the structure even with zero CSS.
-
-### 4. Incremental Feature Implementation
-Implement features in vertical slices to maintain a working application at all times:
-1. **Read-only Navigation:** Browsing folders and breadcrumbs.
-2. **Focus Management:** Handling keyboard traps and popup transitions.
-3. **Write Operations:** Delete, Copy, Paste (with `aria-live` feedback).
-4. **Performance Optimization:** List virtualization and search indexing.
-
-### Best Practices
-- **Atomic Commits:** Each commit should represent a single logical change or sub-process.
-- **Documentation-Driven:** Update the rustdocs or README when the internal API changes.
-- **Failing-Test First:** For backend logic (e.g., path resolution), write a failing test case before implementing the fix.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Application shell | Tauri v2 |
-| Backend / performance logic | Rust |
-| UI / accessibility layer | HTML + CSS + JavaScript (semantic) |
-| Accessibility tree | Native OS webview (WKWebView, WebView2, WebKitGTK) |
-| File indexing | SQLite (via Rust) |
-| Screen reader support | JAWS, VoiceOver, NVDA, Orca — via ARIA |
-
----
-
-## Core Design Principles
-
-- **Screen reader delegation** — the app produces no custom TTS or audio output. All announcements are handled by the user's existing screen reader via a correct semantic and ARIA structure.
-- **One persistent layout** — current path is always at the top, file and folder contents always below. The screen reader never has to relearn the structure.
-- **Keyboard first** — every action is reachable by shortcut. No mouse required.
-- **Minimal UI surface** — no competing sidebars, panels, or toolbars. One focused region at a time.
-- **Popup on demand** — search, context menu, and bookmarks appear as focused popups and dismiss back to the previous focus point.
-
----
-
-## UI Model
-
-### Layout (always)
+Accex never speaks on its own. It has no text-to-speech engine and plays no
+sounds. It exposes a correct, semantic accessibility tree through the
+operating system's native webview, and your screen reader — NVDA, JAWS,
+VoiceOver, or Orca — does the talking, with your voice, your speed, and your
+verbosity settings.
 
 ```
 [ Current location: Home / Documents / Projects ]
 [ file or folder 1                              ]
 [ file or folder 2                              ]
 [ file or folder 3                              ]
-[ ...                                           ]
 ```
 
-The location breadcrumb is always the first element. Contents follow. This structure never changes; search results appear in the search popup, not in the content area.
+## Project Status
 
-### Search bar (popup)
-- Triggered by shortcut (`Ctrl + F`) or the search button; the input pops up in the top fifth of the window, as wide as the path bar, which stays visible above it
-- The page behind the popup fades to 30% visibility
-- Focus jumps to input immediately on open
-- Results load on `Enter` — no live update while typing
-- Results drop down in a list inside the popup; the content area stays as it is
-- Each result shows its folder/file icon, filename and parent path; the spoken label adds type, size and modified date
-- Arrow keys move through the results (focus stays in the input via `aria-activedescendant`); `Enter` on a folder opens it, on a file opens its folder with the file focused
-- Typing a path (`/…`, `~/…`) and pressing `Enter` goes there instead of searching
-- **Search Logic:** Initial v1 uses a flat-file walk; SQLite indexing is utilized for caching previously visited directories.
-- A "more results" item appears at the bottom when results are truncated (200 per page)
-- **Accessibility:** Announces result count via `aria-live` when results load.
-- `Escape` dismisses and restores focus to where it was
+Accex is **pre-release** (version 0.1.0). The core of the v1 feature set is
+implemented, but there are no published binaries yet and you'll need to build
+it yourself. Expect rough edges and breaking changes.
 
-### Context menu
-- Opened by right click (at the pointer), the `Apps` key or `Shift + F10` (below the focused row)
-- A compact `role="menu"`: Open · Cut, Copy, Paste · Rename, Delete; operations that don't apply are shown disabled (empty space offers only Paste)
-- Focus is on the first item; arrows and `Home`/`End` move, `Enter`/`Space` run, `Escape`, `Tab` or the opening key close it
-- Fixed jump keys, shown next to each item and the same in every language: `O` Open, `X` Cut, `C` Copy, `V` Paste, `R` Rename, `D` Delete
-- Rename asks for the new name in the command palette's prompt
+| Feature                                        | Status |
+| ---------------------------------------------- | ------ |
+| Keyboard browsing, breadcrumbs, type-to-jump   | ✅     |
+| Live updates when folder contents change       | ✅     |
+| Search (plain and natural-language queries)    | ✅     |
+| Context menu and command palette               | ✅     |
+| Copy, cut, paste, rename, delete (to trash)    | ✅     |
+| Bookmarks                                      | ✅     |
+| Configurable keyboard shortcuts                | ✅     |
+| English and German UI                          | ✅     |
+| Verified on all three platforms                | ⚠️     |
+| End-to-end tests with `tauri-driver`           | ❌     |
+| Prebuilt releases                              | ❌     |
 
-### Command palette
-- Triggered by `Ctrl + K`
-- Focus jumps to a text input immediately
-- User types an operation (e.g. `cop`, `del`, `ren`) and suggestions appear live
-- Arrow down to select a suggestion, `Enter` to execute
-- If input is empty and user presses arrow down, all available operations are listed — for discoverability
-- `Escape` dismisses without action
+## Using Accex
 
-**v1 operations:**
-- Open
-- Copy
-- Cut
-- Paste
-- Delete
-- Rename
-- Bookmark current path
+Accex opens in your home folder. The location is always the first thing on
+screen; the folder contents follow as a tree. Arrow keys move through the list,
+`Enter` opens, and typing a letter jumps to the next entry starting with it.
+Each entry's name is its label; type, size and modification date are attached
+as a description, so your screen reader only reads them when you ask.
 
-### Bookmarks (popup)
-- Triggered by shortcut
-- List of saved locations, arrow to navigate, `Enter` to go there
-- Bookmarks are created with `Ctrl + D` or the command palette ("Add bookmark")
-- `Escape` dismisses
+### Keyboard Shortcuts
 
----
+| Action                       | Default                                          |
+| ---------------------------- | ------------------------------------------------ |
+| Move through the list        | `Up` / `Down`                                    |
+| Jump to entry by first letter| `A`–`Z`                                          |
+| Open folder or file          | `Enter`                                          |
+| Go up one level              | `Left`, `Backspace`, `Alt+Up`, or `Cmd+Up`       |
+| Type a location              | `/` (`Enter` goes there, `Escape` cancels)       |
+| Announce current location    | `Ctrl+L`                                         |
+| Search                       | `Ctrl+F`                                         |
+| Context menu                 | `Shift+F10`, the `Apps` key, or right click      |
+| Command palette              | `Ctrl+K`                                         |
+| Bookmarks                    | `Ctrl+B`                                         |
+| Bookmark / unbookmark        | `Ctrl+D`                                         |
+| Settings                     | `Ctrl+S`                                         |
+| Close any popup              | `Escape`, or the shortcut that opened it         |
 
-## Keyboard Shortcuts (planned)
+Every shortcut that opens something can be changed under **Settings → Keyboard
+shortcuts**. `Enter` records a new combination, `Delete` resets one, and
+"Reset all shortcuts" restores the defaults. A combination needs `Ctrl` or
+`Alt` (function keys and `/` work alone), `Ctrl+A/C/V/X/Y/Z` stay reserved for
+editing text, and no two actions can share a combination.
 
-| Action | Shortcut |
-|---|---|
-| Navigate into folder | `Enter` |
-| Go up one level | `Backspace` (Win), `Cmd + Up` (Mac), or `Alt + Up` |
-| Open search bar | `Ctrl + F` |
-| Open context menu | Right click, `Apps` key or `Shift + F10` |
-| Open command palette | `Ctrl + K` |
-| Open settings (change shortcuts) | `Ctrl + S` |
-| Open bookmarks | `Ctrl + B` |
-| Bookmark focused file or folder | `Ctrl + D`; again to remove it (in the bookmarks list: removes the selected bookmark) |
-| Announce current location | `Ctrl + L` (Status announcement) |
-| Type a location | `/`, or click the location field (Enter to go, Escape to cancel) |
-| Dismiss any popup | `Escape`, or the shortcut that opened it (`Ctrl + F`, `Ctrl + B`, `Ctrl + K`, `Shift + F10`) |
+### Search
 
-All shortcuts above that open something can be changed in Settings (`Ctrl + S` → Keyboard shortcuts): `Enter` records a new combination (`Escape` cancels), `Delete` resets one, "Reset all shortcuts" at the bottom restores every default. A new combination needs `Ctrl` or `Alt` (function keys and `/` work alone); `Ctrl + A/C/V/X/Y/Z` stay reserved for editing text, and no two actions can share a combination. Changes are saved in the app's `config.json` next to the bookmarks.
-| Jump to file | `A-Z` (First-letter navigation) |
-| Move through file list | `Arrow Up / Down` |
+`Ctrl+F` opens a search field near the top of the window. Results load when
+you press `Enter` — not while you type — and the number of results is
+announced. Arrow keys move through them while focus stays in the field.
+`Enter` on a folder opens it; `Enter` on a file opens its folder with the file
+focused. Typing a path (`/…` or `~/…`) navigates there instead of searching.
 
----
+Search covers the current folder and two levels below it, merged with matches
+from folders you've visited before. Results come in pages of 200.
 
-## Accessibility Requirements
-
-- `role="tree"` and `role="treeitem"` for the directory listing
-- `role="combobox"` for the search input, with a `role="listbox"` of results
-- `role="status"` or `aria-live="polite"` for search result updates and operation feedback
-- `aria-live="assertive"` for errors only
-- `aria-expanded` on folder items (collapsed / expanded state)
-- `aria-posinset` and `aria-setsize` for all items in the file list (critical for virtualized lists)
-- `aria-selected` to indicate the current focused file/folder
-- `aria-describedby` for file metadata (size, date, type) per item
-- `aria-label` on every interactive element — no unlabelled controls
-- Focus moves automatically on popup open and returns to previous element on dismiss
-- WCAG 2.2 AA compliance target
-
----
-
-## Testing Strategy
-
-To ensure the high accessibility and performance standards of this project, all contributions must adhere to the following testing pillars:
-
-### 1. Accessibility Testing (Non-Negotiable)
-- **Automated Audits:** Continuous integration must run `axe-core` or similar engines on the UI to catch semantic errors.
-- **Manual Screen Reader Validation:** Every UI change must be verified with at least one native screen reader (NVDA/JAWS on Windows, VoiceOver on macOS, or Orca on Linux).
-- **Keyboard-Only Navigation:** The application must be fully operable without a mouse or trackpad. Focus visible indicators must never be suppressed.
-
-### 2. Cross-Platform UI Testing
-- **Webview Consistency:** Since Tauri uses the OS-native webview, UI layouts must be tested on Windows (WebView2), macOS (WebKit), and Linux (WebKitGTK) to ensure consistent ARIA tree exposure.
-- **End-to-End (E2E):** Use `tauri-driver` (WebDriver) to automate critical paths: searching for a file, navigating a directory, and opening the command palette.
-
-### 3. Backend Logic Testing (Rust)
-- **File Operations:** Unit tests for path canonicalization, safe file deletion, and recursive copying.
-- **Search Indexing:** Integration tests for SQLite search performance and result ranking.
-- **Mocking:** Use a temporary directory structure for filesystem tests to avoid side effects on the developer's machine.
-
-### 4. Performance Regression
-- Test directory listing speed with a mock folder containing 10,000+ empty files to ensure virtualization and IPC throughput remain within performance goals.
-
----
-
-## Standard Practices
-
-### 1. Internationalization (i18n)
-All user-facing strings, including `aria-label` and `aria-description` content, must be externalized. The app will detect the OS locale and default to English if the translation is unavailable.
-
-### 2. Logging & Observability
-The backend uses the `tracing` crate for structured logging. Logs are stored in the platform-specific "logs" directory (e.g., `%AppData%\Local\org.lynx5001.accex\logs` on Windows). PII (filenames) must be sanitized in production logs unless debug mode is active.
-
-### 3. Configuration & State
-App state (bookmarks, window position, user preferences) is stored in a JSON file within the platform's standard config directory. SQLite is strictly reserved for the search index and metadata cache, not for configuration.
-
----
-
-## Technical Implementation Details
-
-### 1. File System Watcher
-The Rust backend utilizes the `notify` crate to monitor the currently viewed directory. Changes (created, deleted, renamed) must be pushed via Tauri events (`emit`) to the frontend to ensure the screen reader's view remains synchronized with the disk without manual refreshes.
-
-### 2. Performance Goals
-- **Cold Start:** UI should be interactive in < 500ms.
-- **Directory Read:** Directories with < 5,000 items must render in < 100ms.
-- **Memory usage:** Baseline < 100MB RAM.
-
-### 3. Error Handling
-- **Permission Denied:** Friendly `aria-live` announcement: "Access denied to [Folder Name]."
-- **Disk Unplugged:** Graceful fallback to the nearest available parent directory or Home.
-- **Validation:** All path inputs from the search bar must be canonicalized and checked for existence before navigation.
-
-### 4. Security Considerations
-- **Path Traversal:** The backend must validate that requested paths are within allowed scopes (OS-level permissions).
-- **Command Injection:** The "Command Palette" executes internal Rust functions, never raw shell commands.
-- **WebView Isolation:** No external scripts are loaded; `dangerousDisableAssetProtocolNetDoor` is kept `false`.
-
----
-
-## Architecture
+Beyond plain name fragments, search understands a few words in English and
+German:
 
 ```
-┌─────────────────────────────────────────┐
-│              Input layer                │
-│   Keyboard shortcuts · Apps key · Tab   │
-└────────────────┬────────────────────────┘
-                 │
-┌────────────────▼────────────────────────┐
-│            Tauri v2 backend (Rust)      │
-│  File system access · SQLite index      │
-│  Search & path resolution · FS watcher  │
-└────────────────┬────────────────────────┘
-                 │
-┌────────────────▼────────────────────────┐
-│         Frontend (HTML / ARIA)          │
-│  Semantic structure · Focus management  │
-│  ARIA live regions · Popup layer        │
-└────────────────┬────────────────────────┘
-                 │
-┌────────────────▼────────────────────────┐
-│        OS native webview                │
-│  WKWebView · WebView2 · WebKitGTK       │
-│  Exposes full accessibility tree        │
-└────────────────┬────────────────────────┘
-                 │
-┌────────────────▼────────────────────────┐
-│         Screen reader                   │
-│  JAWS · VoiceOver · NVDA · Orca         │
-│  Handles all audio output               │
-└─────────────────────────────────────────┘
+*.rs
+pdf invoices
+images from holiday
+folders named projects
+zeige alle bilder vom urlaub
 ```
 
----
+### Context Menu and Command Palette
 
-## v1 Scope
+The context menu offers **Open · Cut, Copy, Paste · Rename, Delete**.
+Operations that don't apply are shown but disabled. Each item has a fixed
+jump key that is the same in every language: `O`, `X`, `C`, `V`, `R`, `D`.
 
-The first version focuses on core navigation and search. Everything listed below is in scope; nothing else is.
+The command palette (`Ctrl+K`) does the same by name: type `cop`, `ren`,
+`del` and pick a suggestion. Pressing `Down` in an empty palette lists every
+operation, so you never have to memorize them.
 
-**In scope**
-- Browse mode: navigate the file system with keyboard shortcuts
-- Search popup: find files and folders by name or natural language description
-- Context menu (right click, `Apps`, `Shift + F10`) and command palette (`Ctrl + K`) for file operations with `aria-live` feedback
-- Bookmarks: save and jump to frequent locations
-- Full screen reader compatibility via ARIA
-- Cross-platform: Windows, macOS, Linux
+Delete moves items to the system trash. Every operation reports its result
+through a polite live region; errors use an assertive one.
 
-**Explicitly out of scope for v1**
-- Custom TTS or audio output
-- Voice input
-- Multi-file selection
-- File preview
-- Network / cloud storage locations
-- Settings UI
+### Behavior Worth Knowing
 
----
+- Symbolic links are listed but never followed.
+- Hidden files are not shown.
+- If the current folder disappears (for example, a drive is unplugged), Accex
+  falls back to the nearest folder that still exists, or your home folder.
+- The UI language follows your system locale and falls back to English.
 
-## Implementation Notes & Open Questions
+## Building
 
-### Critical Architecture Shift
-The current prototype in `src/main.rs` uses `egui`. **This must be migrated to the Tauri + HTML stack** defined in this README. `egui` renders to a canvas and is fundamentally incompatible with screen readers like JAWS/NVDA.
+There are no prebuilt binaries yet. You'll need:
 
-### Open Questions for the Team
-1. **Symlink Handling:** Should we follow symlinks or treat them as files? (v1 Recommendation: Treat as files to avoid infinite loops).
-2. **Hidden Files:** Should the UI toggle hidden files? (v1 Recommendation: Respect OS defaults).
-3. **IPC Overhead:** For directories with > 50,000 files, should we use a paginated IPC stream or a shared memory buffer to prevent the UI thread from locking?
-4. **Search Depth:** Does the v1 search go deep into subdirectories or stay within the current scope? (v1 Recommendation: Current scope + 2 levels deep).
+- [Rust](https://rustup.rs) (stable)
+- [Node.js](https://nodejs.org) with npm
+- The [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for
+  your platform. On Debian/Ubuntu:
 
----
+  ```
+  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+    libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+  ```
+
+  On Windows, the WebView2 runtime (preinstalled on Windows 11).
+
+Then:
+
+```
+git clone git@github.com:lynx5001/File-explorer.git accex
+cd accex
+npm install
+npm run tauri dev      # run in development mode
+npm run tauri build    # build an installable release
+```
+
+Release bundles end up in `src-tauri/target/release/bundle/`.
+
+## Where Accex Keeps Its Data
+
+Accex uses the standard per-platform directories for the identifier
+`org.lynx5001.accex`.
+
+- **Config** — bookmarks and changed shortcuts, as `config.json` in the
+  platform config directory (e.g. `~/.config/org.lynx5001.accex/` on Linux).
+- **Search cache** — `index.sqlite` in the platform cache directory, holding
+  the folders you've visited. It's only a cache; deleting it is safe.
+- **Logs** — daily rotating `accex.log` files in the platform log directory.
+  Release builds don't log file names.
+
+## Developing Accex
+
+Accex is a [Tauri v2](https://v2.tauri.app) app. The split is strict:
+
+- **Engine** (`src-tauri/`, Rust) owns everything that touches the disk:
+  listing, file operations, the `notify`-based folder watcher, the search
+  walker and its SQLite cache, and config persistence. It knows nothing about
+  the UI.
+- **Surface** (`src/`, TypeScript, no framework) is semantic HTML with ARIA.
+  It owns focus management, live-region announcements, and translations. It
+  never touches the file system directly.
+- **Bridge** — the Tauri commands in `src-tauri/src/lib.rs` and their typed
+  wrappers in `src/bridge/`. Changes to the contract start here, on both
+  sides at once.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full layout and
+[accessibility.md](accessibility.md) for the accessibility rules every UI
+change has to follow.
+
+### Checks
+
+Every change should pass these before it's committed:
+
+```
+npm run lint && npm run format:check && npm run typecheck && npm test
+cd src-tauri && cargo fmt --check && cargo clippy && cargo test
+```
+
+`npm test` runs the real `index.html` in jsdom against a mocked IPC bridge
+and audits it with axe-core. Rust tests live next to the code and use
+temporary directories, never your real files.
+
+Automated tests are not enough for this project. Any change to the UI must
+also be tried with a real screen reader and without a mouse. If you can only
+test one, tell us which one in your pull request.
+
+### Ground Rules
+
+These are the decisions the rest of the project is built on. Changes that
+break them won't be merged.
+
+- **No custom speech.** The screen reader does all output.
+- **One layout.** No sidebars, panels or toolbars. New features are popups
+  that take focus and return it.
+- **Keyboard first.** Every action has a shortcut. Focus indicators are never
+  hidden.
+- **No hardcoded strings.** Everything user-facing, including ARIA labels, goes
+  through `src/i18n/`.
+- **No shell.** The command palette calls Rust functions, never shell commands.
+  No remote scripts are ever loaded into the webview.
+- **WCAG 2.2 AA** is the minimum bar.
+
+### Performance Targets
+
+- Interactive in under 500 ms from a cold start.
+- Folders with fewer than 5,000 entries render in under 100 ms. Larger
+  folders stay usable because the list is virtualized.
+- Under 100 MB of memory at rest.
+
+## Not Planned for 1.0
+
+To keep the first version focused, these are deliberately out of scope:
+built-in text-to-speech, voice input, multi-file selection, file previews,
+and network or cloud locations.
 
 ## Platform Support
 
-| Platform | Webview | Screen readers |
-|---|---|---|
-| Windows 10 / 11 | WebView2 (Edge) | JAWS, NVDA |
-| macOS | WKWebView (Safari) | VoiceOver |
-| Linux | WebKitGTK | Orca |
+| Platform        | Webview          | Screen readers |
+| --------------- | ---------------- | -------------- |
+| Linux           | WebKitGTK        | Orca           |
+| Windows 10 / 11 | WebView2         | NVDA, JAWS     |
+| macOS           | WKWebView        | VoiceOver      |
+
+## License
+
+Accex does not have a license yet. Until one is added, all rights are
+reserved.
